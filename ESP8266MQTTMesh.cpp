@@ -1,4 +1,6 @@
-#include "Mesh.h"
+#include "ESP8266MQTTMesh.h"
+#include "Utils.h"
+
 #include <limits.h>
 extern "C" {
   #include "user_interface.h"
@@ -18,13 +20,13 @@ extern "C" {
 */
 
 
-Mesh::Mesh():
+ESP8266MQTTMesh::ESP8266MQTTMesh():
         espServer(mqtt_port),
         mqttClient(espClient)
 {
 }
 
-void Mesh::setup() {
+void ESP8266MQTTMesh::setup() {
     Serial.println("Starting");
     if (! SPIFFS.begin()) {
       SPIFFS.format();
@@ -34,7 +36,7 @@ void Mesh::setup() {
         while(1);
       }
     }
-    Dir dir = SPIFFS.openDir("/");
+    Dir dir = SPIFFS.openDir("/bssid/");
     while(dir.next()) {
       Serial.println(" ==> '" + dir.fileName() + "'");
     }
@@ -46,7 +48,7 @@ void Mesh::setup() {
     Serial.print(WiFi.status());
 }
 
-void Mesh::loop() {
+void ESP8266MQTTMesh::loop() {
     if (!connected()) {
        WiFi.softAPdisconnect();
        if (millis() - lastReconnect < 5000) {
@@ -99,12 +101,12 @@ void Mesh::loop() {
     //}
 }
 
-bool Mesh::match_bssid(String bssid) {
+bool ESP8266MQTTMesh::match_bssid(String bssid) {
     Serial.println("Trying to match known BSSIDs for " + bssid);
-    return SPIFFS.exists("/"+ bssid);
+    return SPIFFS.exists("/bssid/"+ bssid);
 }
 
-void Mesh::connect() {
+void ESP8266MQTTMesh::connect() {
     Serial.print("Scanning for newtorks\n");
     int numberOfNetworksFound = WiFi.scanNetworks(false,true);
     Serial.print("Found: "); Serial.println(numberOfNetworksFound);
@@ -153,7 +155,7 @@ void Mesh::connect() {
     if (best_match != -1) {
         String ssid = WiFi.SSID(best_match);
         if (ssid == "") {
-            int subdomain = read_subdomain("/" + WiFi.BSSIDstr(best_match));
+            int subdomain = read_subdomain("/bssid/" + WiFi.BSSIDstr(best_match));
             if (subdomain == -1) {
                 return;
             }
@@ -182,7 +184,7 @@ void Mesh::connect() {
     }
 }
 
-void Mesh::callback(char* topic, byte* payload, unsigned int length) {
+void ESP8266MQTTMesh::callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
@@ -193,10 +195,10 @@ void Mesh::callback(char* topic, byte* payload, unsigned int length) {
   Serial.println(msg);
   if (strncmp(topic, "esp8266/bssid/", 14) == 0) {
       String bssid = &topic[14];
-      if(SPIFFS.exists("/" + bssid)) {
+      if(SPIFFS.exists("/bssid/" + bssid)) {
           return;
       }
-      File f = SPIFFS.open("/" + bssid, "w");
+      File f = SPIFFS.open("/bssid/" + bssid, "w");
       if (! f) {
           Serial.println("Failed to write /" + bssid);
           return;
@@ -209,7 +211,7 @@ void Mesh::callback(char* topic, byte* payload, unsigned int length) {
   broadcast_message(String(topic) + "=" + msg);
 }
 
-void Mesh::connect_mqtt() {
+void ESP8266MQTTMesh::connect_mqtt() {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
     if (mqttClient.connect(String("ESP8266-" + WiFi.softAPmacAddress()).c_str())) {
@@ -226,13 +228,19 @@ void Mesh::connect_mqtt() {
     }
 }
 
-void Mesh::publish(String subtopic, String msg) {
-    String req = "esp8266/" + mySSID + "/" + subtopic + "=" + msg;
-    send_message(WiFi.gatewayIP(), req);
+void ESP8266MQTTMesh::publish(String subtopic, String msg) {
+    String topic = "esp8266/" + mySSID + "/" + subtopic;
+    if (meshConnect) {
+        // Send message through mesh network
+        String req = topic + "=" + msg;
+        send_message(WiFi.gatewayIP(), req);
+    } else {
+        mqttClient.publish(topic.c_str(), msg.c_str());
+    }
 }
 
-void Mesh::setup_AP() {
-    int subdomain = read_subdomain("/" + WiFi.softAPmacAddress());
+void ESP8266MQTTMesh::setup_AP() {
+    int subdomain = read_subdomain("/bssid/" + WiFi.softAPmacAddress());
     if (subdomain == -1) {
         return;
     }
@@ -245,11 +253,11 @@ void Mesh::setup_AP() {
     Serial.println("Initialized AP as '" + mySSID + "'  IP '" + apIP.toString() + "'");
     espServer.begin();
     if (meshConnect) {
-        publish("alive", "1");
+        publish("mesh_cmd", "request_bssid");
     }
     AP_ready = true;
 }
-int Mesh::read_subdomain(String fileName) {
+int ESP8266MQTTMesh::read_subdomain(String fileName) {
       File f = SPIFFS.open(fileName, "r");
       if (! f) {
           Serial.println("Failed to read " + fileName);
@@ -264,10 +272,10 @@ int Mesh::read_subdomain(String fileName) {
       }
       return value;
 }
-void Mesh::assign_subdomain() {
+void ESP8266MQTTMesh::assign_subdomain() {
     char seen[256];
     memset(seen, 0, sizeof(seen));
-    Dir dir = SPIFFS.openDir("/");
+    Dir dir = SPIFFS.openDir("/bssid/");
     while(dir.next()) {
       int value = read_subdomain(dir.fileName());
       if (value == -1) {
@@ -278,7 +286,7 @@ void Mesh::assign_subdomain() {
     }
     for (int i = 4; i < 256; i++) {
         if (! seen[i]) {
-            File f = SPIFFS.open("/" +  WiFi.softAPmacAddress(), "w");
+            File f = SPIFFS.open("/bssid/" +  WiFi.softAPmacAddress(), "w");
             if (! f) {
                 Serial.println("Couldn't write "  + WiFi.softAPmacAddress());
                 die();
@@ -294,18 +302,19 @@ void Mesh::assign_subdomain() {
     }
     die();
 }
-void Mesh::send_message(IPAddress ip, String msg) {
+void ESP8266MQTTMesh::send_message(IPAddress ip, String msg) {
     WiFiClient client;
     if (client.connect(ip, mesh_port)) {
         client.print(msg + "\n");
         client.flush();
         client.stop();
+        Serial.println("Sending '" + msg + "' to " + ip.toString());
     } else {
         Serial.println("Failed to send message '" + msg + "' to " + ip.toString());
     }
 }
 
-void Mesh::broadcast_message(String msg) {
+void ESP8266MQTTMesh::broadcast_message(String msg) {
     struct station_info *station_list = wifi_softap_get_station_info();
     while (station_list != NULL) {
         char station_mac[18] = {0}; sprintf(station_mac, "%02X:%02X:%02X:%02X:%02X:%02X", MAC2STR(station_list->bssid));
@@ -316,23 +325,20 @@ void Mesh::broadcast_message(String msg) {
     }
 }
 
-String Mesh::getValue(String data, char separator, int index) {
-  int found = 0;
-  int strIndex[] = {0, -1};
-  int maxIndex = data.length()-1;
-
-  for(int i=0; i<=maxIndex && found<=index; i++){
-    if(data.charAt(i)==separator || i==maxIndex){
-        found++;
-        strIndex[0] = strIndex[1]+1;
-        strIndex[1] = (i == maxIndex) ? i+1 : i;
+void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
+    Dir dir = SPIFFS.openDir("/bssid/");
+    while(dir.next()) {
+        String bssid = dir.fileName().substring(7);
+        int subdomain = read_subdomain(dir.fileName());
+        if (subdomain == -1) {
+            continue;
+        }
+        send_message(ip, "esp8266/bssid/" + bssid + "=" + String(subdomain));
     }
-  }
-
-  return found>index ? data.substring(strIndex[0], strIndex[1]) : "";
 }
 
-void Mesh::handle_client_connection(WiFiClient client) {
+
+void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
     while (client.connected()) {
         if (client.available()) {
             String req = client.readStringUntil('\n');
@@ -346,12 +352,19 @@ void Mesh::handle_client_connection(WiFiClient client) {
                 //This is a packet from MQTT, need to rebroadcast to each connected station
                 broadcast_message(msg);
             } else {
-                if (meshConnect) {
-                    send_message(WiFi.gatewayIP(), req);
+                String topic = getValue(req, '=', 0);
+                String msg   = getValue(req, '=', 1);
+                if (topic.endsWith("/mesh_cmd")) {
+                    // We will handle this packet locally
+                    if (msg == "request_bssid") {
+                        send_bssids(client.localIP());
+                    }
                 } else {
-                    String topic = getValue(req, '=', 0);
-                    String msg   = getValue(req, '=', 1);
-                    mqttClient.publish(topic.c_str(), msg.c_str(), false);
+                    if (meshConnect) {
+                        send_message(WiFi.gatewayIP(), req);
+                    } else {
+                        mqttClient.publish(topic.c_str(), msg.c_str(), false);
+                    }
                 }
             }
         }

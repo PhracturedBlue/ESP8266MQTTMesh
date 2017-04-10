@@ -1,1 +1,0 @@
-FLASH_DEF = 2M
