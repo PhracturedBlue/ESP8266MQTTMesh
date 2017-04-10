@@ -1,9 +1,11 @@
 #ifndef _ESP8266MQTTMESH_H_
 #define _ESP8266MQTTMESH_H_
 
+#include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <FS.h>
+#include <functional>
 
 class ESP8266MQTTMesh {
 private:
@@ -17,6 +19,7 @@ private:
     bool meshConnect = false;
     unsigned long lastReconnect = 0;
     bool AP_ready = false;
+    std::function<void(String topic, String msg)> callback;
 
     bool connected() { return (WiFi.status() == WL_CONNECTED); }
     void die() { while(1) {} }
@@ -29,11 +32,13 @@ private:
     void assign_subdomain();
     void send_bssids(IPAddress ip);
     void handle_client_connection(WiFiClient client);
-    static void callback(char* topic, byte* payload, unsigned int length);
-    static void send_message(IPAddress ip, String msg);
-    static void broadcast_message(String msg);
+    void parse_message(String topic, String msg);
+    void mqtt_callback(char* topic, byte* payload, unsigned int length);
+    void send_message(IPAddress ip, String msg);
+    void broadcast_message(String msg);
 public:
     ESP8266MQTTMesh();
+    void setCallback(std::function<void(String topic, String msg)> _callback);
     void setup();
     void loop();
     void publish(String subtopic, String msg);

@@ -26,6 +26,9 @@ ESP8266MQTTMesh::ESP8266MQTTMesh():
 {
 }
 
+void ESP8266MQTTMesh::setCallback(std::function<void(String topic, String msg)> _callback) {
+    callback = _callback;
+}
 void ESP8266MQTTMesh::setup() {
     Serial.println("Starting");
     if (! SPIFFS.begin()) {
@@ -44,7 +47,7 @@ void ESP8266MQTTMesh::setup() {
     WiFi.disconnect();
   
     mqttClient.setServer(mqtt_server, mqtt_port);
-    mqttClient.setCallback(callback);
+    mqttClient.setCallback([this] (char* topic, byte* payload, unsigned int length) { this->mqtt_callback(topic, payload, length); });
     Serial.print(WiFi.status());
 }
 
@@ -184,17 +187,9 @@ void ESP8266MQTTMesh::connect() {
     }
 }
 
-void ESP8266MQTTMesh::callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  String msg = "";
-  for (int i = 0; i < length; i++) {
-    msg += (char)payload[i];
-  }
-  Serial.println(msg);
-  if (strncmp(topic, "esp8266/bssid/", 14) == 0) {
-      String bssid = &topic[14];
+void ESP8266MQTTMesh::parse_message(String topic, String msg) {
+  if (topic.startsWith("esp8266/bssid/")) {
+      String bssid = topic.substring(14);
       if(SPIFFS.exists("/bssid/" + bssid)) {
           return;
       }
@@ -207,7 +202,21 @@ void ESP8266MQTTMesh::callback(char* topic, byte* payload, unsigned int length) 
       f.print("\n");
       f.close();
       return;
+  } else if(callback) {
+      callback(topic, msg);
   }
+}
+
+void ESP8266MQTTMesh::mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  String msg = "";
+  for (int i = 0; i < length; i++) {
+    msg += (char)payload[i];
+  }
+  Serial.println(msg);
+  parse_message(topic, msg);
   broadcast_message(String(topic) + "=" + msg);
 }
 
