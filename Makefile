@@ -135,6 +135,7 @@ CORE_LIB = $(BUILD_DIR)/arduino.ar
 ifeq ($(LIBS),)
   # Automatically find directories with header files used by the sketch
   LIBS := $(shell perl -e 'use File::Find;$$d = shift;while (<>) {$$f{"$$1"} = 1 if /^\s*\#include\s+[<"]([^>"]+)/;}find(sub {print $$File::Find::dir," " if $$f{$$_}}, $$d);'  $(ESP_LIBS) $(SKETCH))
+  LIBS := $(LIBS) $(shell perl -e 'use File::Find;$$d = shift;while (<>) {$$f{"$$1"} = 1 if /^\s*\#include\s+[<"]([^>"]+)/;}find(sub {print $$File::Find::dir," " if $$f{$$_}}, $$d);'  $(USER_LIBS) $(SKETCH))
   ifeq ($(LIBS),)
     # No dependencies found
     LIBS = /dev/null
@@ -291,6 +292,7 @@ help:
 	echo "                         the ESP Arduino directories are automatically"
 	echo "                         detected. If this is not enough, define this"
 	echo "                         variable with all libraries or directories needed."
+	echo "  USER_LIBS              Path to user installed Arduino libraries"
 	echo "  CHIP                 Set to esp8266 or esp32. Default: '$(CHIP)'"
 	echo "  BOARD                Name of the target board. Default: '$(BOARD)'"
 	echo "                         Use 'list_boards' to get list of available ones"
