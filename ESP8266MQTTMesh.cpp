@@ -8,15 +8,15 @@ extern "C" {
 
 ESP8266MQTTMesh::ESP8266MQTTMesh(const String *networks, const char *network_password, const char *mesh_password,
                                  const String *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port) :
-        espServer(mqtt_port),
-        mqttClient(espClient),
         networks(networks),
         network_password(network_password),
         mesh_password(mesh_password),
         base_ssid(base_ssid),
         mqtt_server(mqtt_server),
         mqtt_port(mqtt_port),
-        mesh_port(mesh_port)
+        mesh_port(mesh_port),
+        espServer(mqtt_port),
+        mqttClient(espClient)
 {
 }
 
@@ -206,7 +206,7 @@ void ESP8266MQTTMesh::mqtt_callback(char* topic, byte* payload, unsigned int len
   Serial.print(topic);
   Serial.print("] ");
   String msg = "";
-  for (int i = 0; i < length; i++) {
+  for (unsigned int i = 0; i < length; i++) {
     msg += (char)payload[i];
   }
   Serial.println(msg);

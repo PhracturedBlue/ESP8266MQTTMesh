@@ -19,16 +19,17 @@ const char*  mqtt_server      = MQTT_SERVER;
 const int    mqtt_port        = MQTT_PORT;
 const int    mesh_port        = MESH_PORT;
 
-
+/* Sonoff POW w/ DS18B20 attached to GPIO2(SDA) */
 #define GREEN_LED   15 //MTDO
 #define RELAY       12 //MTDI
 #define BUTTON       0 //GPIO0
-#define TEMPERATURE  2 //GPIO2
+#define DS18B20      2 //GPIO2
 
-#define HAS_TEMPERATURE 1
-
-OneWire oneWire(TEMPERATURE);
+#ifdef DS18B20
+OneWire oneWire(DS18B20);
 DallasTemperature ds18b20(&oneWire);
+DeviceAddress ds18b20Address;
+#endif
 
 ESP8266MQTTMesh mesh(networks, network_password, mesh_password,
                      &base_ssid, mqtt_server, mqtt_port, mesh_port);
@@ -50,6 +51,12 @@ void setup() {
     delay(5000);
     mesh.setCallback(callback);
     mesh.setup();
+#ifdef DS18B20
+    ds18b20.begin();
+    ds18b20.getAddress(ds18b20Address, 0);
+    ds18b20.setWaitForConversion(false);
+    ds18b20.requestTemperatures();
+#endif
     //mesh.setup will initialize the filesystem
     if (SPIFFS.exists("/config")) {
         read_config();
@@ -63,6 +70,14 @@ void loop() {
     static bool needToSend = false;
     mesh.loop();
     unsigned long now = millis();
+
+#ifdef DS18B20
+    if (ds18b20.isConversionAvailable(ds18b20Address)) {
+        temperature = ds18b20.getTempF(ds18b20Address);
+        ds18b20.requestTemperatures();
+    }    
+#endif
+
     if (! digitalRead(BUTTON))  {
         if(pressed == 0) {
             relayState = ! relayState;
@@ -86,9 +101,9 @@ void callback(String topic, String msg) {
 String build_json() {
     String msg = "{";
     msg += " \"relay\":\"" + String(relayState ? "ON" : "OFF") + "\"";
-    if (HAS_TEMPERATURE) {
+#ifdef DS18B20RE
         msg += ", \"temp\":" + String(temperature, 2);
-    }
+#endif
     msg += "}";
     return msg;
 }
