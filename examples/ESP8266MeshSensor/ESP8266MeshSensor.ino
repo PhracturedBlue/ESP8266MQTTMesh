@@ -5,8 +5,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-#include "ESP8266MQTTMesh.h"
-#include "Utils.h"
+#include <ESP8266MQTTMesh.h>
 
 #define GREEN_LED   15 //MTDO
 #define RELAY       12 //MTDI
@@ -87,8 +86,8 @@ void read_config() {
     }
     while(f.available()) {
         String s     = f.readStringUntil('\n');
-        String key   = getValue(s, '=', 0);
-        String value = getValue(s, '=', 1);
+        String key   = ESP8266MQTTMesh::getValue(s, '=', 0);
+        String value = ESP8266MQTTMesh::getValue(s, '=', 1);
         if (key == "RELAY") {
             relayState = value == "0" ? 0 : 1;
         }

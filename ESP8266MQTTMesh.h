@@ -42,5 +42,6 @@ public:
     void setup();
     void loop();
     void publish(String subtopic, String msg);
+    static String getValue(String data, char separator, int index);
 };
 #endif //_ESP8266MQTTMESH_H_
