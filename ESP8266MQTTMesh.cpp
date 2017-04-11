@@ -88,14 +88,6 @@ void ESP8266MQTTMesh::loop() {
     if (client) {
         handle_client_connection(client);
     }
-    //if (now - lastMsg > 2000) {
-    //  lastMsg = now;
-    //  ++value;
-    //  snprintf (msg, 75, "hello world #%ld", value);
-    //  Serial.print("Publish message: ");
-    //  Serial.println(msg);
-    //  mqttClient.publish("outTopic", msg);
-    //}
 }
 
 bool ESP8266MQTTMesh::match_bssid(String bssid) {
@@ -104,7 +96,7 @@ bool ESP8266MQTTMesh::match_bssid(String bssid) {
 }
 
 void ESP8266MQTTMesh::connect() {
-    Serial.print("Scanning for newtorks\n");
+    Serial.print("Scanning for networks\n");
     int numberOfNetworksFound = WiFi.scanNetworks(false,true);
     Serial.print("Found: "); Serial.println(numberOfNetworksFound);
     int best_match = -1;
@@ -196,7 +188,9 @@ void ESP8266MQTTMesh::parse_message(String topic, String msg) {
       f.print("\n");
       f.close();
       return;
-  } else if(callback) {
+  }
+  if(callback && topic.startsWith("esp8266/" + mySSID + "/")) {
+      //Only handle messages addressed to this node
       callback(topic, msg);
   }
 }

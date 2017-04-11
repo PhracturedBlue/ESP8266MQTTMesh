@@ -92,6 +92,7 @@ void loop() {
     if (needToSend) {
         String data = build_json();
         mesh.publish("status", data);
+        needToSend = false;
     }   
 }
 
@@ -101,7 +102,7 @@ void callback(String topic, String msg) {
 String build_json() {
     String msg = "{";
     msg += " \"relay\":\"" + String(relayState ? "ON" : "OFF") + "\"";
-#ifdef DS18B20RE
+#ifdef DS18B20
         msg += ", \"temp\":" + String(temperature, 2);
 #endif
     msg += "}";
