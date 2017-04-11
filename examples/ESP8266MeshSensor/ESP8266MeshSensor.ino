@@ -7,6 +7,19 @@
 
 #include <ESP8266MQTTMesh.h>
 
+/* See credentials.h.examle for contents of credentials.h */
+#include "credentials.h"
+
+
+const String networks[]       = NETWORK_LIST;
+const char*  network_password = NETWORK_PASSWORD;
+const char*  mesh_password    = MESH_PASSWORD;
+const String base_ssid        = BASE_SSID;
+const char*  mqtt_server      = MQTT_SERVER;
+const int    mqtt_port        = MQTT_PORT;
+const int    mesh_port        = MESH_PORT;
+
+
 #define GREEN_LED   15 //MTDO
 #define RELAY       12 //MTDI
 #define BUTTON       0 //GPIO0
@@ -17,7 +30,9 @@
 OneWire oneWire(TEMPERATURE);
 DallasTemperature ds18b20(&oneWire);
 
-ESP8266MQTTMesh mesh;
+ESP8266MQTTMesh mesh(networks, network_password, mesh_password,
+                     &base_ssid, mqtt_server, mqtt_port, mesh_port);
+
 bool relayState = false;
 int  heartbeat  = 300000;
 float temperature = 0.0;

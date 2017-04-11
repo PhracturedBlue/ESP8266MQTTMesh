@@ -9,6 +9,14 @@
 
 class ESP8266MQTTMesh {
 private:
+    const String *networks;
+    const char   *network_password;
+    const char   *mesh_password;
+    const String *base_ssid;
+    const char   *mqtt_server;
+    const int    mqtt_port;
+    const int    mesh_port;
+
     WiFiClient espClient;
     WiFiServer espServer;
     PubSubClient mqttClient;
@@ -37,7 +45,8 @@ private:
     void send_message(IPAddress ip, String msg);
     void broadcast_message(String msg);
 public:
-    ESP8266MQTTMesh();
+    ESP8266MQTTMesh(const String *networks, const char *network_password, const char *mesh_password,
+                    const String *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port);
     void setCallback(std::function<void(String topic, String msg)> _callback);
     void setup();
     void loop();

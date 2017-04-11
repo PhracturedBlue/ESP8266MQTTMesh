@@ -4,24 +4,19 @@
 extern "C" {
   #include "user_interface.h"
 }
-#include "credentials.h"
-/* credentials.h should include the following:
-   const String networks[] = {
-             "network ssid1",
-             "network ssid2",
-             "",
-             };
-   const char* network_password = "ssid password";
-   const char* mesh_password    = "mesh password";
-   const String base_ssid       = "mesh_esp8266-";
-   const char* mqtt_server      = "MQTT server IP address";
-   const int   mqtt_port        = 1883;
-*/
 
 
-ESP8266MQTTMesh::ESP8266MQTTMesh():
+ESP8266MQTTMesh::ESP8266MQTTMesh(const String *networks, const char *network_password, const char *mesh_password,
+                                 const String *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port) :
         espServer(mqtt_port),
-        mqttClient(espClient)
+        mqttClient(espClient),
+        networks(networks),
+        network_password(network_password),
+        mesh_password(mesh_password),
+        base_ssid(base_ssid),
+        mqtt_server(mqtt_server),
+        mqtt_port(mqtt_port),
+        mesh_port(mesh_port)
 {
 }
 
@@ -161,7 +156,7 @@ void ESP8266MQTTMesh::connect() {
             if (subdomain == -1) {
                 return;
             }
-            ssid = base_ssid + String(subdomain);
+            ssid = *base_ssid + String(subdomain);
             meshConnect = true;
         } else {
             meshConnect = false;
@@ -252,7 +247,7 @@ void ESP8266MQTTMesh::setup_AP() {
     if (subdomain == -1) {
         return;
     }
-    mySSID = base_ssid + String(subdomain);
+    mySSID = *base_ssid + String(subdomain);
     IPAddress apIP(192, 168, subdomain, 1);
     IPAddress apGateway(192, 168, subdomain, 1);
     IPAddress apSubmask(255, 255, 255, 0);
