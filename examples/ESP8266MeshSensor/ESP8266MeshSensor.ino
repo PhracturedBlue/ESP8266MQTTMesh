@@ -82,7 +82,8 @@ unsigned int hlw8012_getVoltage();
 #endif
 
 ESP8266MQTTMesh mesh(networks, network_password, mesh_password,
-                     &base_ssid, mqtt_server, mqtt_port, mesh_port);
+                     &base_ssid, mqtt_server, mqtt_port, mesh_port,
+                     IN_TOPIC, OUT_TOPIC);
 
 bool relayState = false;
 int  heartbeat  = 300000;

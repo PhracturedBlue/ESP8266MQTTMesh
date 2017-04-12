@@ -24,7 +24,8 @@ extern "C" {
 
 
 ESP8266MQTTMesh::ESP8266MQTTMesh(const String *networks, const char *network_password, const char *mesh_password,
-                                 const String *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port) :
+                                 const String *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
+                                 const String inTopic, const String outTopic) :
         networks(networks),
         network_password(network_password),
         mesh_password(mesh_password),
@@ -32,6 +33,8 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const String *networks, const char *network_pas
         mqtt_server(mqtt_server),
         mqtt_port(mqtt_port),
         mesh_port(mesh_port),
+        inTopic(inTopic),
+        outTopic(outTopic),
         espServer(mqtt_port),
         mqttClient(espClient)
 {
@@ -191,8 +194,8 @@ void ESP8266MQTTMesh::connect() {
 }
 
 void ESP8266MQTTMesh::parse_message(String topic, String msg) {
-  if (topic.startsWith("esp8266/bssid/")) {
-      String bssid = topic.substring(14);
+  if (topic.startsWith(inTopic + "bssid/")) {
+      String bssid = topic.substring(inTopic.length() + 6);
       if(SPIFFS.exists("/bssid/" + bssid)) {
           return;
       }
@@ -206,13 +209,13 @@ void ESP8266MQTTMesh::parse_message(String topic, String msg) {
       f.close();
       return;
   }
-  if(callback && topic.startsWith("esp8266/" + mySSID + "/")) {
+  if(callback && topic.startsWith(inTopic + mySSID + "/")) {
       //Only handle messages addressed to this node
-      callback(topic.substring(8 + mySSID.length() + 1), msg);
+      callback(topic.substring(inTopic.length() + mySSID.length() + 1), msg);
   }
-  else if(callback && topic.startsWith("esp8266/broadcast/")) {
+  else if(callback && topic.startsWith(inTopic + "broadcast/")) {
       //Or messages sent to all nodes
-      callback(topic.substring(18, msg);
+      callback(topic.substring(inTopic.length() + 10), msg);
   }
 }
 
@@ -235,9 +238,9 @@ void ESP8266MQTTMesh::connect_mqtt() {
     if (mqttClient.connect(String("ESP8266-" + WiFi.softAPmacAddress()).c_str())) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      mqttClient.publish(String("esp8266/" + WiFi.localIP().toString()).c_str(), "connected");
+      mqttClient.publish(String(outTopic + WiFi.localIP().toString()).c_str(), "connected");
       // ... and resubscribe
-      mqttClient.subscribe("esp8266/#");
+      mqttClient.subscribe(String(inTopic + "#").c_str());
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqttClient.state());
@@ -247,7 +250,7 @@ void ESP8266MQTTMesh::connect_mqtt() {
 }
 
 void ESP8266MQTTMesh::publish(String subtopic, String msg) {
-    String topic = "esp8266/" + mySSID + "/" + subtopic;
+    String topic = outTopic + mySSID + "/" + subtopic;
     if (meshConnect) {
         // Send message through mesh network
         String req = topic + "=" + msg;
@@ -312,7 +315,8 @@ void ESP8266MQTTMesh::assign_subdomain() {
             f.print(i);
             f.print("\n");
             f.close();
-            String topic = "esp8266/bssid/" + WiFi.softAPmacAddress();
+            //Yes this is meant to be inTopic.  That allows all other nodes to see this message
+            String topic = inTopic + "bssid/" + WiFi.softAPmacAddress();
             Serial.println("Publishing " + topic + " == " + String(i));
             mqttClient.publish(topic.c_str(), String(i).c_str(), true);
             return;
@@ -351,7 +355,7 @@ void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
         if (subdomain == -1) {
             continue;
         }
-        send_message(ip, "esp8266/bssid/" + bssid + "=" + String(subdomain));
+        send_message(ip, inTopic + "bssid/" + bssid + "=" + String(subdomain));
     }
 }
 
