@@ -191,7 +191,11 @@ void ESP8266MQTTMesh::parse_message(String topic, String msg) {
   }
   if(callback && topic.startsWith("esp8266/" + mySSID + "/")) {
       //Only handle messages addressed to this node
-      callback(topic, msg);
+      callback(topic.substring(8 + mySSID.length() + 1), msg);
+  }
+  else if(callback && topic.startsWith("esp8266/broadcast/")) {
+      //Or messages sent to all nodes
+      callback(topic.substring(18, msg);
   }
 }
 
