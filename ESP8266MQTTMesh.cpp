@@ -29,7 +29,7 @@ size_t strlcat (char *dst, const char *src, size_t len) {
 
 ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_password, const char *mesh_password,
                                  const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
-                                 const String inTopic, const String outTopic) :
+                                 const char *inTopic,   const char *outTopic) :
         networks(networks),
         network_password(network_password),
         mesh_password(mesh_password),
@@ -42,6 +42,15 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
         espServer(mqtt_port),
         mqttClient(espClient)
 {
+    if (strlen(inTopic) > 16) {
+        Serial.println("Max inTopicLen == 16");
+        die();
+    }
+    if (strlen(outTopic) > 16) {
+        Serial.println("Max outTopicLen == 16");
+        die();
+    }
+    mySSID[0] = 0;
 }
 
 void ESP8266MQTTMesh::setCallback(std::function<void(String topic, String msg)> _callback) {
@@ -201,15 +210,22 @@ void ESP8266MQTTMesh::connect() {
     }
 }
 
-void ESP8266MQTTMesh::parse_message(String topic, String msg) {
-  if (topic.startsWith(inTopic + "bssid/")) {
-      String bssid = topic.substring(inTopic.length() + 6);
-      if(SPIFFS.exists("/bssid/" + bssid)) {
+void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
+  int inTopicLen = strlen(inTopic);
+  if (strstr(topic, inTopic) != 0) {
+      return;
+  }
+  if (strstr(topic + inTopicLen,"bssid/") == 0) {
+      const char *bssid = topic + inTopicLen + 6;
+      char filename[32];
+      strlcpy(filename, "/bssid/", sizeof(filename));
+      strlcat(filename, bssid, sizeof(filename));
+      if(SPIFFS.exists(filename)) {
           return;
       }
-      File f = SPIFFS.open("/bssid/" + bssid, "w");
+      File f = SPIFFS.open(filename, "w");
       if (! f) {
-          Serial.println("Failed to write /" + bssid);
+          Serial.println("Failed to write /" + String(bssid));
           return;
       }
       f.print(msg);
@@ -217,20 +233,24 @@ void ESP8266MQTTMesh::parse_message(String topic, String msg) {
       f.close();
       return;
   }
-  else if (topic.startsWith(inTopic + "ota/")) {
+  else if (strstr(topic + inTopicLen,"ota/") == 0) {
 #if HAS_OTA
-      String cmd = topic.substring(inTopic.length() + 4);
+      const char *cmd = topic + inTopicLen + 4;
       handle_ota(cmd, msg);
 #endif
       return;
   }
-  if(callback && topic.startsWith(inTopic + mySSID + "/")) {
-      //Only handle messages addressed to this node
-      callback(topic.substring(inTopic.length() + mySSID.length() + 1), msg);
+  if (! callback) {
+      return;
   }
-  else if(callback && topic.startsWith(inTopic + "broadcast/")) {
+  int mySSIDLen = strlen(mySSID);
+  if(strstr(topic + inTopicLen, mySSID) == 0) {
+      //Only handle messages addressed to this node
+      callback(topic + inTopicLen + mySSIDLen, msg);
+  }
+  else if(strstr(topic + inTopicLen, "broadcast/") == 0) {
       //Or messages sent to all nodes
-      callback(topic.substring(inTopic.length() + 10), msg);
+      callback(topic + inTopicLen + 10, msg);
   }
 }
 
@@ -243,7 +263,7 @@ void ESP8266MQTTMesh::mqtt_callback(char* topic, byte* payload, unsigned int len
     msg += (char)payload[i];
   }
   Serial.println(msg);
-  parse_message(topic, msg);
+  parse_message(topic, msg.c_str());
   broadcast_message(String(topic) + "=" + msg);
 }
 
@@ -253,9 +273,15 @@ void ESP8266MQTTMesh::connect_mqtt() {
     if (mqttClient.connect(String("ESP8266-" + WiFi.softAPmacAddress()).c_str())) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      mqttClient.publish(String(outTopic + WiFi.localIP().toString()).c_str(), "connected");
+      char publishMsg[TOPIC_LEN];
+      strlcpy(publishMsg, outTopic, sizeof(publishMsg));
+      strlcat(publishMsg, WiFi.localIP().toString().c_str(), sizeof(publishMsg));
+      mqttClient.publish(publishMsg, "connected");
       // ... and resubscribe
-      mqttClient.subscribe(String(inTopic + "#").c_str());
+      char subscribe[TOPIC_LEN];
+      strlcpy(subscribe, inTopic, sizeof(subscribe));
+      strlcat(subscribe, "#", sizeof(subscribe));
+      mqttClient.subscribe(subscribe);
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqttClient.state());
@@ -265,13 +291,18 @@ void ESP8266MQTTMesh::connect_mqtt() {
 }
 
 void ESP8266MQTTMesh::publish(String subtopic, String msg) {
-    String topic = outTopic + mySSID + "/" + subtopic;
+    char topic[64];
+    char req[MQTT_MAX_PACKET_SIZE];
+    strlcpy(req, outTopic, sizeof(req));
+    strlcat(req, mySSID, sizeof(req));
+    strlcat(req, subtopic.c_str(), sizeof(req));
     if (meshConnect) {
         // Send message through mesh network
-        String req = topic + "=" + msg;
+        strlcat(req, "=", sizeof(req));
+        strlcat(req, msg.c_str(), sizeof(req));
         send_message(WiFi.gatewayIP(), req);
     } else {
-        mqttClient.publish(topic.c_str(), msg.c_str());
+        mqttClient.publish(req, msg.c_str());
     }
 }
 
@@ -280,13 +311,17 @@ void ESP8266MQTTMesh::setup_AP() {
     if (subdomain == -1) {
         return;
     }
-    mySSID = *base_ssid + String(subdomain);
+    char subdomainStr[4];
+    itoa(subdomain, subdomainStr, 10);
+    strlcpy(mySSID, base_ssid, sizeof(mySSID));
+    strlcat(mySSID, subdomainStr, sizeof(mySSID));
     IPAddress apIP(192, 168, subdomain, 1);
     IPAddress apGateway(192, 168, subdomain, 1);
     IPAddress apSubmask(255, 255, 255, 0);
     WiFi.softAPConfig(apIP, apGateway, apSubmask);
-    WiFi.softAP(mySSID.c_str(), mesh_password, 1, 1);
-    Serial.println("Initialized AP as '" + mySSID + "'  IP '" + apIP.toString() + "'");
+    WiFi.softAP(mySSID, mesh_password, 1, 1);
+    Serial.println("Initialized AP as '" + String(mySSID) + "'  IP '" + apIP.toString() + "'");
+    strlcat(mySSID, "/", sizeof(mySSID));
     espServer.begin();
     if (meshConnect) {
         publish("mesh_cmd", "request_bssid");
@@ -331,9 +366,11 @@ void ESP8266MQTTMesh::assign_subdomain() {
             f.print("\n");
             f.close();
             //Yes this is meant to be inTopic.  That allows all other nodes to see this message
-            String topic = inTopic + "bssid/" + WiFi.softAPmacAddress();
-            Serial.println("Publishing " + topic + " == " + String(i));
-            mqttClient.publish(topic.c_str(), String(i).c_str(), true);
+            char topic[TOPIC_LEN];
+            strlcpy(topic, inTopic, sizeof(topic));
+            strlcat(topic, "bssid/", sizeof(topic));
+            Serial.println("Publishing " + String(topic) + " == " + String(i));
+            mqttClient.publish(topic, String(i).c_str(), true);
             return;
         }
     }
@@ -364,13 +401,20 @@ void ESP8266MQTTMesh::broadcast_message(String msg) {
 
 void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
     Dir dir = SPIFFS.openDir("/bssid/");
+    char msg[TOPIC_LEN+32];
+    char subdomainStr[4];
     while(dir.next()) {
-        String bssid = dir.fileName().substring(7);
         int subdomain = read_subdomain(dir.fileName());
         if (subdomain == -1) {
             continue;
         }
-        send_message(ip, inTopic + "bssid/" + bssid + "=" + String(subdomain));
+        itoa(subdomain, subdomainStr, 10);
+        strlcpy(msg, inTopic, sizeof(msg));
+        strlcat(msg, "bssid/", sizeof(msg));
+        strlcat(msg, dir.fileName().substring(7).c_str(), sizeof(msg)); // bssid
+        strlcat(msg, "=", sizeof(msg));
+        strlcat(msg, subdomainStr, sizeof(msg));
+        send_message(ip, msg);
     }
 }
 
@@ -389,7 +433,7 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
             keyValue(req, '=', topic, msg);
             if (isLocal) {
                 //This is a packet from MQTT, need to rebroadcast to each connected station
-                parse_message(topic, msg);
+                parse_message(topic.c_str(), msg.c_str());
                 broadcast_message(req);
             } else {
                 if (topic.endsWith("/mesh_cmd")) {

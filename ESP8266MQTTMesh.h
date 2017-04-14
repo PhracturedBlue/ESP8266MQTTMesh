@@ -15,6 +15,8 @@
 #include <FS.h>
 #include <functional>
 
+#define TOPIC_LEN 32
+
 class ESP8266MQTTMesh {
 private:
     const char   **networks;
@@ -24,13 +26,13 @@ private:
     const char   *mqtt_server;
     const int    mqtt_port;
     const int    mesh_port;
-    const String inTopic;
-    const String outTopic;
+    const char   *inTopic;
+    const char   *outTopic;
 
     WiFiClient espClient;
     WiFiServer espServer;
     PubSubClient mqttClient;
-    String mySSID = "";
+    char mySSID[16];
     long lastMsg = 0;
     char msg[50];
     int value = 0;
@@ -50,7 +52,7 @@ private:
     void assign_subdomain();
     void send_bssids(IPAddress ip);
     void handle_client_connection(WiFiClient client);
-    void parse_message(String topic, String msg);
+    void parse_message(const char *topic, const char *msg);
     void mqtt_callback(char* topic, byte* payload, unsigned int length);
     void send_message(IPAddress ip, String msg);
     void broadcast_message(String msg);
@@ -58,7 +60,7 @@ private:
 public:
     ESP8266MQTTMesh(const char **networks, const char *network_password, const char *mesh_password,
                     const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
-                    const String inTopic, const String outTopic);
+                    const char *inTopic, const char *outTopic);
     void setCallback(std::function<void(String topic, String msg)> _callback);
     void setup();
     void loop();
