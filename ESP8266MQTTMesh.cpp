@@ -53,7 +53,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
     mySSID[0] = 0;
 }
 
-void ESP8266MQTTMesh::setCallback(std::function<void(String topic, String msg)> _callback) {
+void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
     callback = _callback;
 }
 void ESP8266MQTTMesh::setup() {
@@ -218,11 +218,12 @@ void ESP8266MQTTMesh::connect() {
 
 void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   int inTopicLen = strlen(inTopic);
-  if (strstr(topic, inTopic) != 0) {
+  if (strstr(topic, inTopic) != topic) {
       return;
   }
-  if (strstr(topic + inTopicLen,"bssid/") == 0) {
-      const char *bssid = topic + inTopicLen + 6;
+  const char *subtopic = topic + inTopicLen;
+  if (strstr(subtopic,"bssid/") == subtopic) {
+      const char *bssid = subtopic + 6;
       char filename[32];
       strlcpy(filename, "/bssid/", sizeof(filename));
       strlcat(filename, bssid, sizeof(filename));
@@ -239,9 +240,9 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
       f.close();
       return;
   }
-  else if (strstr(topic + inTopicLen,"ota/") == 0) {
+  else if (strstr(subtopic ,"ota/") == subtopic) {
 #if HAS_OTA
-      const char *cmd = topic + inTopicLen + 4;
+      const char *cmd = subtopic + 4;
       handle_ota(cmd, msg);
 #endif
       return;
@@ -250,13 +251,13 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
       return;
   }
   int mySSIDLen = strlen(mySSID);
-  if(strstr(topic + inTopicLen, mySSID) == 0) {
+  if(strstr(subtopic, mySSID) == subtopic) {
       //Only handle messages addressed to this node
-      callback(topic + inTopicLen + mySSIDLen, msg);
+      callback(subtopic + mySSIDLen, msg);
   }
-  else if(strstr(topic + inTopicLen, "broadcast/") == 0) {
+  else if(strstr(subtopic, "broadcast/") == subtopic) {
       //Or messages sent to all nodes
-      callback(topic + inTopicLen + 10, msg);
+      callback(subtopic + 10, msg);
   }
 }
 
@@ -264,13 +265,13 @@ void ESP8266MQTTMesh::mqtt_callback(char* topic, byte* payload, unsigned int len
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
-  String msg = "";
-  for (unsigned int i = 0; i < length; i++) {
-    msg += (char)payload[i];
-  }
-  Serial.println(msg);
-  parse_message(topic, msg.c_str());
-  broadcast_message(String(topic) + "=" + msg);
+  int len = strlen(topic);
+  strlcpy(buffer, topic, sizeof(buffer));
+  buffer[len++] = '=';
+  memcpy(buffer + len, payload, sizeof(buffer)-len > length ? length : sizeof(buffer)-len);
+  Serial.println(buffer+len);
+  parse_message(topic, buffer+len);
+  broadcast_message(buffer);
 }
 
 void ESP8266MQTTMesh::connect_mqtt() {
@@ -296,19 +297,18 @@ void ESP8266MQTTMesh::connect_mqtt() {
     }
 }
 
-void ESP8266MQTTMesh::publish(String subtopic, String msg) {
+void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg) {
     char topic[64];
-    char req[MQTT_MAX_PACKET_SIZE];
-    strlcpy(req, outTopic, sizeof(req));
-    strlcat(req, mySSID, sizeof(req));
-    strlcat(req, subtopic.c_str(), sizeof(req));
+    strlcpy(buffer, outTopic, sizeof(buffer));
+    strlcat(buffer, mySSID, sizeof(buffer));
+    strlcat(buffer, subtopic, sizeof(buffer));
     if (meshConnect) {
         // Send message through mesh network
-        strlcat(req, "=", sizeof(req));
-        strlcat(req, msg.c_str(), sizeof(req));
-        send_message(WiFi.gatewayIP(), req);
+        strlcat(buffer, "=", sizeof(buffer));
+        strlcat(buffer, msg, sizeof(buffer));
+        send_message(WiFi.gatewayIP(), buffer);
     } else {
-        mqttClient.publish(req, msg.c_str());
+        mqttClient.publish(buffer, msg);
     }
 }
 
@@ -337,15 +337,14 @@ void ESP8266MQTTMesh::setup_AP() {
     }
     AP_ready = true;
 }
-void ESP8266MQTTMesh::read_until(File &f, char *buf, char delim, int len) {
-      int bytes = f.read((uint8_t *)buf, len);
+int ESP8266MQTTMesh::read_until(Stream &f, char *buf, char delim, int len) {
       for (int i = 0; i < len; i++) {
-          if (buf[i] == delim) {
-              buf[i] = 0;
-              f.seek(i-bytes, SeekCur);;
-              break;
-          }
+          buf[i] = f.read();
+          if (buf[i] == '\n')
+          buf[i] = 0;
+          return i;
       }
+      return len;
 }
 int ESP8266MQTTMesh::read_subdomain(const char *fileName) {
       char subdomain[4];
@@ -387,28 +386,31 @@ void ESP8266MQTTMesh::assign_subdomain() {
             f.close();
             //Yes this is meant to be inTopic.  That allows all other nodes to see this message
             char topic[TOPIC_LEN];
+            char msg[4];
+            itoa(i, msg, 10);
             strlcpy(topic, inTopic, sizeof(topic));
             strlcat(topic, "bssid/", sizeof(topic));
             Serial.println("Publishing " + String(topic) + " == " + String(i));
-            mqttClient.publish(topic, String(i).c_str(), true);
+            mqttClient.publish(topic, msg, true);
             return;
         }
     }
     die();
 }
-void ESP8266MQTTMesh::send_message(IPAddress ip, String msg) {
+void ESP8266MQTTMesh::send_message(IPAddress ip, const char *msg) {
     WiFiClient client;
     if (client.connect(ip, mesh_port)) {
-        client.print(msg + "\n");
+        client.print(msg);
+        client.print("\n");
         client.flush();
         client.stop();
-        Serial.println("Sending '" + msg + "' to " + ip.toString());
+        Serial.println("Sending '" + String(msg) + "' to " + ip.toString());
     } else {
-        Serial.println("Failed to send message '" + msg + "' to " + ip.toString());
+        Serial.println("Failed to send message '" + String(msg) + "' to " + ip.toString());
     }
 }
 
-void ESP8266MQTTMesh::broadcast_message(String msg) {
+void ESP8266MQTTMesh::broadcast_message(const char *msg) {
     struct station_info *station_list = wifi_softap_get_station_info();
     while (station_list != NULL) {
         char station_mac[18] = {0}; sprintf(station_mac, "%02X:%02X:%02X:%02X:%02X:%02X", MAC2STR(station_list->bssid));
@@ -442,30 +444,31 @@ void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
 void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
     while (client.connected()) {
         if (client.available()) {
-            String req = client.readStringUntil('\n');
+            read_until(client, buffer, '\n', sizeof(buffer));
             bool isLocal = (client.localIP() == WiFi.localIP() ? true : false);
             Serial.println("Received: msg from " + client.remoteIP().toString() + " on " + (isLocal ? "STA" : "AP"));
             Serial.println("1: " + client.localIP().toString() + " 2: " + WiFi.localIP().toString() + " 3: " + WiFi.softAPIP().toString());
-            Serial.println("--> '" + req + "'");
+            Serial.print("--> '"); Serial.print(buffer); Serial.println("'");
             client.flush();
             client.stop();
-            String topic, msg;
-            keyValue(req, '=', topic, msg);
+            char topic[64];
+            const char *msg;
+            keyValue(buffer, '=', topic, sizeof(topic), &msg);
             if (isLocal) {
                 //This is a packet from MQTT, need to rebroadcast to each connected station
-                parse_message(topic.c_str(), msg.c_str());
-                broadcast_message(req);
+                parse_message(topic, msg);
+                broadcast_message(buffer);
             } else {
-                if (topic.endsWith("/mesh_cmd")) {
+                if (strstr(topic,"/mesh_cmd")  == topic + strlen(topic) - 9) {
                     // We will handle this packet locally
-                    if (msg == "request_bssid") {
+                    if (0 == strcmp(msg, "request_bssid")) {
                         send_bssids(client.localIP());
                     }
                 } else {
                     if (meshConnect) {
-                        send_message(WiFi.gatewayIP(), req);
+                        send_message(WiFi.gatewayIP(), buffer);
                     } else {
-                        mqttClient.publish(topic.c_str(), msg.c_str(), false);
+                        mqttClient.publish(topic, msg, false);
                     }
                 }
             }
@@ -473,31 +476,29 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
     }
 }
 
-void ESP8266MQTTMesh::keyValue(const String data, char separator, String &key, String &value) {
-  int maxIndex = data.length()-1;
-  int strIndex = -1;
-  for(int i=0; i<=maxIndex; i++) {
-      if (data.charAt(i) == separator) {
-          strIndex = i;
-          break;
+bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int keylen, const char **value) {
+  int maxIndex = strlen(data-1);
+  int i;
+  for(i=0; i<=maxIndex && i <keylen-1; i++) {
+      key[i] = data[i];
+      if (key[i] == separator) {
+          *value = data+i+1;
+          key[i] = 0;
+          return true;
       }
   }
-  if (strIndex == -1) {
-      key = data;
-      value = "";
-  } else {
-      key = data.substring(0, strIndex);
-      value = data.substring(strIndex+1);
-  }
+  key[i] = 0;
+  *value = NULL;
+  return false;
 }
 
-void ESP8266MQTTMesh::handle_ota(const String cmd, const String msg) {
+void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
 /*
     if(cmd == "start") {
         String kv, unparsed;
         unparsed = msg;
         while(unparsed.length()) {
-            keyValue(msg, ',', kv, unparsed);
+            keyValue(msg, ',', &kv, &unparsed);
             String key, value;
             keyValue(kv,':', key, value);
             if (key == "id") {

@@ -93,7 +93,7 @@ float temperature = 0.0;
 
 void read_config();
 void save_config();
-void callback(String topic, String msg);
+void callback(const char *topic, const char *msg);
 String build_json();
 
 void setup() {
@@ -187,36 +187,36 @@ void loop() {
         current_sum = 0;
         voltage_sum = 0;
         power_sample_count = 0;
-        mesh.publish("status", data);
+        mesh.publish("status", data.c_str());
         needToSend = false;
     }   
 }
 
-void callback(String topic, String msg) {
+void callback(const char *topic, const char *msg) {
 #if HAS_HLW8012
-    if (topic == "expectedpower") {
-       int pow = msg.toInt();
+    if (0 == strcmp(topic, "expectedpower")) {
+       int pow = atoi(msg);
        if (pow > 0) {
            hlw8012.expectedActivePower(pow);
            save_config();
        }
     }
-    if (topic == "expectedvoltage") {
-       int volt = msg.toInt();
+    if (0 == strcmp(topic, "expectedvoltage")) {
+       int volt = atoi(msg);
        if (volt > 0) {
            hlw8012.expectedVoltage(volt);
            save_config();
        }
     }
-    if (topic == "expectedcurrent") {
-       double current = msg.toFloat();
+    if (0 == strcmp(topic, "expectedcurrent")) {
+       double current = atof(msg);
        if (current > 0) {
            hlw8012.expectedCurrent(current);
            save_config();
        }
     }
-    if (topic == "resetpower") {
-       int state = msg.toInt();
+    if (0 == strcmp(topic, "resetpower")) {
+       int state = atoi(msg);
        if (state > 0) {
            hlw8012.resetMultipliers();
            save_config();
@@ -257,14 +257,18 @@ void read_config() {
         return;
     }
     while(f.available()) {
-        String s     = f.readStringUntil('\n');
-        String key, value;
-        ESP8266MQTTMesh::keyValue(s, '=', key, value);
-        if (key == "RELAY") {
-            relayState = value == "0" ? 0 : 1;
+        char s[32];
+        char key[32];
+        const char *value;
+        ESP8266MQTTMesh::read_until(f, s, '\n', sizeof(s));
+        if (! ESP8266MQTTMesh::keyValue(s, '=', key, sizeof(key), &value)) {
+            continue;
         }
-        else if (key == "HEARTBEAT") {
-            heartbeat = value.toInt();
+        if (0 == strcmp(key, "RELAY")) {
+            relayState = value[0] == '0' ? 0 : 1;
+        }
+        else if (0 == strcmp(key, "HEARTBEAT")) {
+            heartbeat = atoi(value);
             if (heartbeat < 1000) {
                 heartbeat = 1000;
             } else if (heartbeat > 60 * 60 * 1000) {
@@ -272,17 +276,17 @@ void read_config() {
             }
         }
 #if HAS_HLW8012
-        else if  (key == "hlw8012PowerMult") {
-            double dbl = value.toFloat();
+        else if  (0 == strcmp(key, "hlw8012PowerMult")) {
+            double dbl = atof(value);
             if (dbl > 0) hlw8012.setPowerMultiplier(dbl);
              
         }
-        else if  (key == "hlw8012CurrentMult") {
-            double dbl = value.toFloat();
+        else if  (0 == strcmp(key, "hlw8012CurrentMult")) {
+            double dbl = atof(value);
             if (dbl > 0) hlw8012.setCurrentMultiplier(dbl);
         }
-        else if  (key == "hlw8012VoltageMult") {
-            double dbl = value.toFloat();
+        else if  (0 == strcmp(key, "hlw8012VoltageMult")) {
+            double dbl = atof(value);
             if (dbl > 0) hlw8012.setVoltageMultiplier(dbl);
         }
 #endif //HAS_HLW8012

@@ -33,13 +33,14 @@ private:
     WiFiServer espServer;
     PubSubClient mqttClient;
     char mySSID[16];
+    char buffer[MQTT_MAX_PACKET_SIZE];
     long lastMsg = 0;
     char msg[50];
     int value = 0;
     bool meshConnect = false;
     unsigned long lastReconnect = 0;
     bool AP_ready = false;
-    std::function<void(String topic, String msg)> callback;
+    std::function<void(const char *topic, const char *msg)> callback;
 
     bool connected() { return (WiFi.status() == WL_CONNECTED); }
     void die() { while(1) {} }
@@ -54,18 +55,18 @@ private:
     void handle_client_connection(WiFiClient client);
     void parse_message(const char *topic, const char *msg);
     void mqtt_callback(char* topic, byte* payload, unsigned int length);
-    void send_message(IPAddress ip, String msg);
-    void broadcast_message(String msg);
-    void handle_ota(const String cmd, const String msg);
-    void read_until(File &f, char *buf, char delim, int len);
+    void send_message(IPAddress ip, const char *msg);
+    void broadcast_message(const char *msg);
+    void handle_ota(const char *cmd, const char *msg);
 public:
     ESP8266MQTTMesh(const char **networks, const char *network_password, const char *mesh_password,
                     const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
                     const char *inTopic, const char *outTopic);
-    void setCallback(std::function<void(String topic, String msg)> _callback);
+    void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
     void setup();
     void loop();
-    void publish(String subtopic, String msg);
-    static void keyValue(const String data, char separator, String &key, String &value);
+    void publish(const char *subtopic, const char *msg);
+    static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);
+    static int  read_until(Stream &f, char *buf, char delim, int len);
 };
 #endif //_ESP8266MQTTMESH_H_
