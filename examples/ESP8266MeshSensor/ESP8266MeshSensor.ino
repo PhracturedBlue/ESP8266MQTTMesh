@@ -31,7 +31,6 @@
 #include "credentials.h"
 #include "capabilities.h"
 #include <ESP8266WiFi.h>
-#include <PubSubClient.h>
 #include <FS.h>
 #include <OneWire.h>
 #if HAS_DS18B20
@@ -42,13 +41,16 @@
 #endif
 
 #include <ESP8266MQTTMesh.h>
+#if 0
+    //DO NOT Remove this section!  It is used to help the makefile find libraries
+    #include <PubSubClient.h>
+#endif
 
 
-
-const String networks[]       = NETWORK_LIST;
+const char*  networks[]       = NETWORK_LIST;
 const char*  network_password = NETWORK_PASSWORD;
 const char*  mesh_password    = MESH_PASSWORD;
-const String base_ssid        = BASE_SSID;
+const char*  base_ssid        = BASE_SSID;
 const char*  mqtt_server      = MQTT_SERVER;
 const int    mqtt_port        = MQTT_PORT;
 const int    mesh_port        = MESH_PORT;
@@ -82,7 +84,7 @@ unsigned int hlw8012_getVoltage();
 #endif
 
 ESP8266MQTTMesh mesh(networks, network_password, mesh_password,
-                     &base_ssid, mqtt_server, mqtt_port, mesh_port,
+                     base_ssid, mqtt_server, mqtt_port, mesh_port,
                      IN_TOPIC, OUT_TOPIC);
 
 bool relayState = false;
@@ -256,8 +258,8 @@ void read_config() {
     }
     while(f.available()) {
         String s     = f.readStringUntil('\n');
-        String key   = ESP8266MQTTMesh::getValue(s, '=', 0);
-        String value = ESP8266MQTTMesh::getValue(s, '=', 1);
+        String key, value;
+        ESP8266MQTTMesh::keyValue(s, '=', key, value);
         if (key == "RELAY") {
             relayState = value == "0" ? 0 : 1;
         }

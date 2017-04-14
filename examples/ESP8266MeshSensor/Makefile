@@ -142,7 +142,6 @@ ifeq ($(LIBS),)
     LIBS = /dev/null
   endif
 endif
-
 IGNORE_PATTERN := $(foreach dir,$(EXCLUDE_DIRS),$(dir)/%)
 SKETCH_DIR = $(dir $(SKETCH))
 USER_INC := $(filter-out $(IGNORE_PATTERN),$(shell find -L $(SKETCH_DIR) $(LIBS) -name "*.h"))
@@ -261,7 +260,7 @@ list_boards:
 
 list_lib:
 	echo === User specific libraries ===
-	perl -e 'foreach (@ARGV) {print "$$_\n"}' "* Include directories:" $(USER_INC_DIRS)  "* Library source files:" $(USER_SRC)
+	perl -e 'foreach (@ARGV) {print "$$_\n"}' "* Include directories:" $(USER_INC_DIRS)  "* Library source files:" $(USER_SRC) "Foo" $(IGNORE_PATTERN)
 
 list_flash_defs:
 	echo === Memory configurations for board: $(BOARD) ===

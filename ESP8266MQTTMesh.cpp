@@ -22,9 +22,13 @@ extern "C" {
   #include "user_interface.h"
 }
 
+size_t strlcat (char *dst, const char *src, size_t len) {
+    size_t slen = strlen(dst);
+    return strlcpy(dst + slen, src, len - slen);
+}
 
-ESP8266MQTTMesh::ESP8266MQTTMesh(const String *networks, const char *network_password, const char *mesh_password,
-                                 const String *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
+ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_password, const char *mesh_password,
+                                 const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
                                  const String inTopic, const String outTopic) :
         networks(networks),
         network_password(network_password),
@@ -124,11 +128,11 @@ void ESP8266MQTTMesh::connect() {
 
     for(int i = 0; i < numberOfNetworksFound; i++) {
         bool found = false;
-        String ssid = WiFi.SSID(i);
-        Serial.println("Found SSID: '" + ssid + "' BSSID '" + WiFi.BSSIDstr(i) + "'");
-        if (ssid != "") {
-            for(int j = 0; networks[j] != ""; j++) {
-                if(ssid == networks[j]) {
+        const char *ssid = WiFi.SSID(i).c_str();
+        Serial.println("Found SSID: '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(i) + "'");
+        if (ssid[0] != 0) {
+            for(int j = 0; networks[j] != NULL && networks[j][0] != 0; j++) {
+                if(strcmp(ssid, networks[j]) == 0) {
                     Serial.println("Matched");
                     found = true;
                     break;
@@ -162,21 +166,25 @@ void ESP8266MQTTMesh::connect() {
         }
     }
     if (best_match != -1) {
-        String ssid = WiFi.SSID(best_match);
-        if (ssid == "") {
+        char ssid[64];
+        if (WiFi.SSID(best_match) == "") {
+            char subdomain_c[8];
             int subdomain = read_subdomain("/bssid/" + WiFi.BSSIDstr(best_match));
             if (subdomain == -1) {
                 return;
             }
-            ssid = *base_ssid + String(subdomain);
+            itoa(subdomain, subdomain_c, 10);
+            strlcpy(ssid, base_ssid, sizeof(ssid));
+            strlcat(ssid, subdomain_c, sizeof(ssid));
             meshConnect = true;
         } else {
+            strlcpy(ssid, WiFi.SSID(best_match).c_str(), sizeof(ssid));
             meshConnect = false;
         }
-        Serial.println("Connecting to SSID : '" + ssid + "' BSSID '" + WiFi.BSSIDstr(best_match) + "'");
-        String password = meshConnect ? mesh_password : network_password;
+        Serial.println("Connecting to SSID : '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(best_match) + "'");
+        const char *password = meshConnect ? mesh_password : network_password;
         //WiFi.begin(ssid.c_str(), password.c_str(), 0, WiFi.BSSID(best_match), true);
-        WiFi.begin(ssid.c_str(), password.c_str());
+        WiFi.begin(ssid, password);
         for (int i = 0; i < 120 && ! connected(); i++) {
             delay(500);
             Serial.println(WiFi.status());
@@ -207,6 +215,13 @@ void ESP8266MQTTMesh::parse_message(String topic, String msg) {
       f.print(msg);
       f.print("\n");
       f.close();
+      return;
+  }
+  else if (topic.startsWith(inTopic + "ota/")) {
+#if HAS_OTA
+      String cmd = topic.substring(inTopic.length() + 4);
+      handle_ota(cmd, msg);
+#endif
       return;
   }
   if(callback && topic.startsWith(inTopic + mySSID + "/")) {
@@ -370,12 +385,13 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
             Serial.println("--> '" + req + "'");
             client.flush();
             client.stop();
+            String topic, msg;
+            keyValue(req, '=', topic, msg);
             if (isLocal) {
                 //This is a packet from MQTT, need to rebroadcast to each connected station
-                broadcast_message(msg);
+                parse_message(topic, msg);
+                broadcast_message(req);
             } else {
-                String topic = getValue(req, '=', 0);
-                String msg   = getValue(req, '=', 1);
                 if (topic.endsWith("/mesh_cmd")) {
                     // We will handle this packet locally
                     if (msg == "request_bssid") {
@@ -393,18 +409,44 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
     }
 }
 
-String ESP8266MQTTMesh::getValue(String data, char separator, int index) {
-  int found = 0;
-  int strIndex[] = {0, -1};
+void ESP8266MQTTMesh::keyValue(const String data, char separator, String &key, String &value) {
   int maxIndex = data.length()-1;
-
-  for(int i=0; i<=maxIndex && found<=index; i++){
-    if(data.charAt(i)==separator || i==maxIndex){
-        found++;
-        strIndex[0] = strIndex[1]+1;
-        strIndex[1] = (i == maxIndex) ? i+1 : i;
-    }
+  int strIndex = -1;
+  for(int i=0; i<=maxIndex; i++) {
+      if (data.charAt(i) == separator) {
+          strIndex = i;
+          break;
+      }
   }
+  if (strIndex == -1) {
+      key = data;
+      value = "";
+  } else {
+      key = data.substring(0, strIndex);
+      value = data.substring(strIndex+1);
+  }
+}
 
-  return found>index ? data.substring(strIndex[0], strIndex[1]) : "";
+void ESP8266MQTTMesh::handle_ota(const String cmd, const String msg) {
+/*
+    if(cmd == "start") {
+        String kv, unparsed;
+        unparsed = msg;
+        while(unparsed.length()) {
+            keyValue(msg, ',', kv, unparsed);
+            String key, value;
+            keyValue(kv,':', key, value);
+            if (key == "id") {
+              id = value.
+        int len = 
+        for int i = 0; i < 
+        StaticJsonBuffer<128> jsonBuffer;
+        JsonObject& root = jsonBuffer.parseObject(msg);
+
+const char* sensor = root["sensor"];
+long time          = root["time"];
+double latitude    = root["data"][0];
+double longitude   = root["data"][1];
+    }
+*/
 }
