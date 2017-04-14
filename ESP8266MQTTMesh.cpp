@@ -107,7 +107,7 @@ void ESP8266MQTTMesh::loop() {
         mqttClient.loop();
         long now = millis();
         if (! AP_ready) {
-            if (match_bssid(WiFi.softAPmacAddress())) {
+            if (match_bssid(WiFi.softAPmacAddress().c_str())) {
                 setup_AP();
             } else if (now - lastReconnect > 10000) {
                 assign_subdomain();
@@ -123,9 +123,12 @@ void ESP8266MQTTMesh::loop() {
     }
 }
 
-bool ESP8266MQTTMesh::match_bssid(String bssid) {
-    Serial.println("Trying to match known BSSIDs for " + bssid);
-    return SPIFFS.exists("/bssid/"+ bssid);
+bool ESP8266MQTTMesh::match_bssid(const char *bssid) {
+    char filename[32];
+    Serial.println("Trying to match known BSSIDs for " + String(bssid));
+    strlcpy(filename, "/bssid/", sizeof(filename));
+    strlcat(filename, bssid, sizeof(filename));
+    return SPIFFS.exists(filename);
 }
 
 void ESP8266MQTTMesh::connect() {
@@ -156,14 +159,14 @@ void ESP8266MQTTMesh::connect() {
                 SPIFFS.info(fs_info);
                 if (fs_info.usedBytes !=0) {
                     Serial.println("Trying to match known BSSIDs for " + WiFi.BSSIDstr(i));
-                    if (! match_bssid(WiFi.BSSIDstr(i))) {
+                    if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
                         Serial.println("Failed to match BSSID");
                         continue;
                     }
                 }
             }
         } else {
-            if (! match_bssid(WiFi.BSSIDstr(i))) {
+            if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
                 Serial.println("Failed to match BSSID");
                 continue;
             }
@@ -178,7 +181,10 @@ void ESP8266MQTTMesh::connect() {
         char ssid[64];
         if (WiFi.SSID(best_match) == "") {
             char subdomain_c[8];
-            int subdomain = read_subdomain("/bssid/" + WiFi.BSSIDstr(best_match));
+            char filename[32];
+            strlcpy(filename, "/bssid/", sizeof(filename));
+            strlcat(filename, WiFi.BSSIDstr(best_match).c_str(), sizeof(filename));
+            int subdomain = read_subdomain(filename);
             if (subdomain == -1) {
                 return;
             }
@@ -203,7 +209,7 @@ void ESP8266MQTTMesh::connect() {
             Serial.println("WiFi connected");
             Serial.println("IP address: ");
             Serial.println(WiFi.localIP());
-            if (match_bssid(WiFi.softAPmacAddress())) {
+            if (match_bssid(WiFi.softAPmacAddress().c_str())) {
                 setup_AP();
             }
         }
@@ -307,7 +313,10 @@ void ESP8266MQTTMesh::publish(String subtopic, String msg) {
 }
 
 void ESP8266MQTTMesh::setup_AP() {
-    int subdomain = read_subdomain("/bssid/" + WiFi.softAPmacAddress());
+    char filename[32];
+    strlcpy(filename, "/bssid/", sizeof(filename));
+    strlcat(filename, WiFi.softAPmacAddress().c_str(), sizeof(filename));
+    int subdomain = read_subdomain(filename);
     if (subdomain == -1) {
         return;
     }
@@ -328,17 +337,28 @@ void ESP8266MQTTMesh::setup_AP() {
     }
     AP_ready = true;
 }
-int ESP8266MQTTMesh::read_subdomain(String fileName) {
+void ESP8266MQTTMesh::read_until(File &f, char *buf, char delim, int len) {
+      int bytes = f.read((uint8_t *)buf, len);
+      for (int i = 0; i < len; i++) {
+          if (buf[i] == delim) {
+              buf[i] = 0;
+              f.seek(i-bytes, SeekCur);;
+              break;
+          }
+      }
+}
+int ESP8266MQTTMesh::read_subdomain(const char *fileName) {
+      char subdomain[4];
       File f = SPIFFS.open(fileName, "r");
       if (! f) {
-          Serial.println("Failed to read " + fileName);
+          Serial.println("Failed to read " + String(fileName));
           return -1;
       }
-      String subdomain = f.readStringUntil('\n');
+      read_until(f, subdomain, '\n', sizeof(subdomain));
       f.close();
-      int value = subdomain.toInt();
+      int value = atoi(subdomain);
       if (value < 0 || value > 255) {
-          Serial.print("Illegal value '" + subdomain + "' from " + fileName);
+          Serial.print("Illegal value '" + String(subdomain) + "' from " + String(fileName));
           return -1;
       }
       return value;
@@ -348,7 +368,7 @@ void ESP8266MQTTMesh::assign_subdomain() {
     memset(seen, 0, sizeof(seen));
     Dir dir = SPIFFS.openDir("/bssid/");
     while(dir.next()) {
-      int value = read_subdomain(dir.fileName());
+      int value = read_subdomain(dir.fileName().c_str());
       if (value == -1) {
           continue;
       }
@@ -404,7 +424,7 @@ void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
     char msg[TOPIC_LEN+32];
     char subdomainStr[4];
     while(dir.next()) {
-        int subdomain = read_subdomain(dir.fileName());
+        int subdomain = read_subdomain(dir.fileName().c_str());
         if (subdomain == -1) {
             continue;
         }

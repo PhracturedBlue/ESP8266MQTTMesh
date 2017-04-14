@@ -44,11 +44,11 @@ private:
     bool connected() { return (WiFi.status() == WL_CONNECTED); }
     void die() { while(1) {} }
 
-    bool match_bssid(String bssid);
+    bool match_bssid(const char *bssid);
     void connect();
     void connect_mqtt();
     void setup_AP();
-    int read_subdomain(String fileName);
+    int read_subdomain(const char *fileName);
     void assign_subdomain();
     void send_bssids(IPAddress ip);
     void handle_client_connection(WiFiClient client);
@@ -57,6 +57,7 @@ private:
     void send_message(IPAddress ip, String msg);
     void broadcast_message(String msg);
     void handle_ota(const String cmd, const String msg);
+    void read_until(File &f, char *buf, char delim, int len);
 public:
     ESP8266MQTTMesh(const char **networks, const char *network_password, const char *mesh_password,
                     const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
