@@ -17,6 +17,12 @@
 
 #define TOPIC_LEN 32
 
+typedef struct {
+    unsigned int id;
+    unsigned int len;
+    byte         md5[16];
+} ota_info_t;
+
 class ESP8266MQTTMesh {
 private:
     const char   **networks;
@@ -28,7 +34,10 @@ private:
     const int    mesh_port;
     const char   *inTopic;
     const char   *outTopic;
-
+#if HAS_OTA
+    uint32_t freeSpaceStart;
+    uint32_t freeSpaceEnd;
+#endif
     WiFiClient espClient;
     WiFiServer espServer;
     PubSubClient mqttClient;
@@ -58,6 +67,8 @@ private:
     void send_message(IPAddress ip, const char *msg);
     void broadcast_message(const char *msg);
     void handle_ota(const char *cmd, const char *msg);
+    ota_info_t parse_ota_info(const char *str);
+    bool check_ota_md5();
 public:
     ESP8266MQTTMesh(const char **networks, const char *network_password, const char *mesh_password,
                     const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,

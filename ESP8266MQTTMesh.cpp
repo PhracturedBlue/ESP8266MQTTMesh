@@ -16,10 +16,13 @@
  */
 
 #include "ESP8266MQTTMesh.h"
+#include "Base64.h"
+#include "eboot_command.h"
 
 #include <limits.h>
 extern "C" {
   #include "user_interface.h"
+  uint32_t _SPIFFS_start;
 }
 
 size_t strlcat (char *dst, const char *src, size_t len) {
@@ -51,6 +54,12 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
         die();
     }
     mySSID[0] = 0;
+#if HAS_OTA
+    uint32_t usedSize = ESP.getSketchSize();
+    // round one sector up
+    freeSpaceStart = (usedSize + FLASH_SECTOR_SIZE - 1) & (~(FLASH_SECTOR_SIZE - 1));
+    freeSpaceEnd = (uint32_t)&_SPIFFS_start - 0x40200000;
+#endif
 }
 
 void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
@@ -456,8 +465,8 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
             keyValue(buffer, '=', topic, sizeof(topic), &msg);
             if (isLocal) {
                 //This is a packet from MQTT, need to rebroadcast to each connected station
-                parse_message(topic, msg);
                 broadcast_message(buffer);
+                parse_message(topic, msg);
             } else {
                 if (strstr(topic,"/mesh_cmd")  == topic + strlen(topic) - 9) {
                     // We will handle this packet locally
@@ -492,26 +501,116 @@ bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int 
   return false;
 }
 
-void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
-/*
-    if(cmd == "start") {
-        String kv, unparsed;
-        unparsed = msg;
-        while(unparsed.length()) {
-            keyValue(msg, ',', &kv, &unparsed);
-            String key, value;
-            keyValue(kv,':', key, value);
-            if (key == "id") {
-              id = value.
-        int len = 
-        for int i = 0; i < 
-        StaticJsonBuffer<128> jsonBuffer;
-        JsonObject& root = jsonBuffer.parseObject(msg);
-
-const char* sensor = root["sensor"];
-long time          = root["time"];
-double latitude    = root["data"][0];
-double longitude   = root["data"][1];
+ota_info_t ESP8266MQTTMesh::parse_ota_info(const char *str) {
+    ota_info_t ota_info;
+    memset (&ota_info, 0, sizeof(ota_info));
+    char kv[64];
+    while(keyValue(str, ',', kv, sizeof(kv), &str)) {
+        char key[32];
+        const char *value;
+        if (! keyValue(kv, ':', key, sizeof(key), &value)) {
+            continue;
+        }
+        if (0 == strcmp(key, "id")) {
+            ota_info.id = atoi(value);
+        } else if (0 == strcmp(key, "len")) {
+            ota_info.len = atoi(value);
+        } else if (0 == strcmp(key, "md5")) {
+            if(base64_dec_len(value, 22) == 16) {
+              base64_decode((char *)ota_info.md5, value,  22);
+            }
+        }
     }
-*/
+    return ota_info;
+}
+bool ESP8266MQTTMesh::check_ota_md5() {
+    uint8_t buf[128];
+    File f = SPIFFS.open("/ota", "r");
+    read_until(f, (char *)buf, '\n', sizeof(buf));
+    ota_info_t ota_info = parse_ota_info((char *)buf);
+    if (ota_info.len > freeSpaceEnd - freeSpaceStart) {
+        return false;
+    }
+    MD5Builder _md5;
+    _md5.begin();
+    uint32_t address = freeSpaceStart;
+    unsigned int len = ota_info.len;
+    while(len) {
+        int size = len > sizeof(buf) ? sizeof(buf) : len;
+        if (! ESP.flashRead(address, (uint32_t *)buf, (size + 3) & ~3)) {
+            return false;
+        }
+        _md5.add(buf, size);
+        address += size;
+        len -= size;
+    }
+    _md5.calculate();
+    _md5.getBytes(buf);
+    for (int i = 0; i < 16; i++) {
+        if (buf[i] != ota_info.md5[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
+    if(0 == strcmp(cmd, "start")) {
+        ota_info_t ota_info = parse_ota_info(msg);
+        if (ota_info.id == 0 || ota_info.len == 0) {
+            return;
+        }
+        File f = SPIFFS.open("/ota", "w");
+        f.print(msg);
+        f.print("\n");
+        if (ESP.getFreeSketchSpace() > freeSpaceEnd - freeSpaceStart) {
+            return;
+        }
+        //erase flash area here
+        for (int i = freeSpaceStart / FLASH_SECTOR_SIZE; i < freeSpaceEnd / FLASH_SECTOR_SIZE; i++) {
+           bool result = ESP.flashEraseSector(i);
+           yield();
+        }
+    }
+    else if(0 == strcmp(cmd, "check")) {
+        //Note that this will destroy the buffer, so don't look at msg after this
+        publish("check", check_ota_md5() ? "MD5 Passed" : "MD5 Failed");
+    }
+    else if(0 == strcmp(cmd, "flash")) {
+        if (! check_ota_md5()) {
+            publish("flash", "Failed");
+            return;
+        }
+        uint8_t buf[128];
+        File f = SPIFFS.open("/ota", "r");
+        read_until(f, (char *)buf, '\n', sizeof(buf));
+        ota_info_t ota_info = parse_ota_info((char *)buf);
+        
+        eboot_command ebcmd;
+        ebcmd.action = ACTION_COPY_RAW;
+        ebcmd.args[0] = freeSpaceStart;
+        ebcmd.args[1] = 0x00000;
+        ebcmd.args[2] = ota_info.len;
+        eboot_command_write(&ebcmd);
+        //publish("flash", "Success");
+        ESP.restart();
+    }
+    else {
+        char *end;
+        int address = strtol(cmd, &end, 10);
+        if (address > freeSpaceEnd - freeSpaceStart || end != cmd + strlen(cmd)) {
+            return;
+        }
+        int msglen = strlen(msg);
+        if (msglen > 1024) {
+            return;
+        }
+        byte data[768];
+        int len = base64_decode((char *)data, msg, msglen);
+        if (address + len > freeSpaceEnd) {
+            return;
+        }
+        ESP.flashWrite(freeSpaceStart + address, (uint32_t*) data, len);
+        yield();
+    }
 }
