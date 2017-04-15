@@ -37,11 +37,12 @@ size_t strlcat (char *dst, const char *src, size_t len) {
     return strlcpy(dst + slen, src, len - slen);
 }
 
-ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id,
+ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
                                  const char **networks, const char *network_password, const char *mesh_password,
                                  const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
                                  const char *inTopic,   const char *outTopic) :
         firmware_id(firmware_id),
+        firmware_ver(firmware_ver),
         networks(networks),
         network_password(network_password),
         mesh_password(mesh_password),
@@ -76,7 +77,7 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
     callback = _callback;
 }
 void ESP8266MQTTMesh::setup() {
-    dbgPrintln(DEBUG_MSG_EXTRA, "Starting");
+    dbgPrintln(DEBUG_MSG_EXTRA, "Starting Firmware" + String(firmware_id, HEX) + " : " + String(firmware_ver));
 #if HAS_OTA
     dbgPrintln(DEBUG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
 #endif
@@ -295,7 +296,7 @@ void ESP8266MQTTMesh::mqtt_callback(const char* topic, const byte* payload, unsi
   int len = strlen(topic);
   strlcpy(buffer, topic, sizeof(buffer));
   buffer[len++] = '=';
-  strlcpy(buffer + len, (char *)payload, sizeof(buffer)-len > length ? length : sizeof(buffer)-len);
+  strlcpy(buffer + len, (char *)payload, sizeof(buffer)-len > length ? length+1 : sizeof(buffer)-len);
   dbgPrintln(DEBUG_MQTT, buffer);
   broadcast_message(buffer);
   parse_message(topic, buffer+len);
@@ -307,10 +308,16 @@ void ESP8266MQTTMesh::connect_mqtt() {
     if (mqttClient.connect(String("ESP8266-" + WiFi.softAPmacAddress()).c_str())) {
       dbgPrintln(DEBUG_MQTT, "connected");
       // Once connected, publish an announcement...
-      char publishMsg[TOPIC_LEN];
-      strlcpy(publishMsg, outTopic, sizeof(publishMsg));
-      strlcat(publishMsg, WiFi.localIP().toString().c_str(), sizeof(publishMsg));
-      mqttClient.publish(publishMsg, "connected");
+      char msg[64];
+      char id[9];
+      itoa(firmware_id, id, 16);
+      strlcpy(msg, "Connected FW: ", sizeof(msg));
+      strlcat(msg, id, sizeof(msg));
+      strlcat(msg, " : ", sizeof(msg));
+      strlcat(msg, firmware_ver, sizeof(msg));
+      //strlcpy(publishMsg, outTopic, sizeof(publishMsg));
+      //strlcat(publishMsg, WiFi.localIP().toString().c_str(), sizeof(publishMsg));
+      publish("connect", msg);
       // ... and resubscribe
       char subscribe[TOPIC_LEN];
       strlcpy(subscribe, inTopic, sizeof(subscribe));
@@ -363,15 +370,6 @@ void ESP8266MQTTMesh::setup_AP() {
     }
     AP_ready = true;
 }
-int ESP8266MQTTMesh::read_until(Stream &f, char *buf, char delim, int len) {
-      for (int i = 0; i < len; i++) {
-          buf[i] = f.read();
-          if (buf[i] == '\n')
-          buf[i] = 0;
-          return i;
-      }
-      return len;
-}
 int ESP8266MQTTMesh::read_subdomain(const char *fileName) {
       char subdomain[4];
       File f = SPIFFS.open(fileName, "r");
@@ -379,7 +377,7 @@ int ESP8266MQTTMesh::read_subdomain(const char *fileName) {
           dbgPrintln(DEBUG_WIFI, "Failed to read " + String(fileName));
           return -1;
       }
-      read_until(f, subdomain, '\n', sizeof(subdomain));
+      subdomain[f.readBytesUntil('\n', subdomain, sizeof(subdomain)-1)] = 0;
       f.close();
       unsigned int value = strtoul(subdomain, NULL, 10);
       if (value < 0 || value > 255) {
@@ -474,7 +472,7 @@ void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
 void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
     while (client.connected()) {
         if (client.available()) {
-            read_until(client, buffer, '\n', sizeof(buffer));
+            buffer[client.readBytesUntil('\n', buffer, sizeof(buffer)-1)] = 0;
             bool isLocal = (client.localIP() == WiFi.localIP() ? true : false);
             dbgPrintln(DEBUG_MQTT, "Received: msg from " + client.remoteIP().toString() + " on " + (isLocal ? "STA" : "AP"));
             dbgPrintln(DEBUG_MQTT_EXTRA, "1: " + client.localIP().toString() + " 2: " + WiFi.localIP().toString() + " 3: " + WiFi.softAPIP().toString());
@@ -528,17 +526,23 @@ ota_info_t ESP8266MQTTMesh::parse_ota_info(const char *str) {
     ota_info_t ota_info;
     memset (&ota_info, 0, sizeof(ota_info));
     char kv[64];
-    while(keyValue(str, ',', kv, sizeof(kv), &str)) {
+    while(str) {
+        keyValue(str, ',', kv, sizeof(kv), &str);
+        dbgPrintln(DEBUG_OTA_EXTRA, "Key/Value: " + String(kv));
         char key[32];
         const char *value;
         if (! keyValue(kv, ':', key, sizeof(key), &value)) {
+            dbgPrintln(DEBUG_OTA, "Failed to parse Key/Value: " + String(kv));
             continue;
         }
+        dbgPrintln(DEBUG_OTA_EXTRA, "Key: " + String(key) + " Value: " + String(value));
         if (0 == strcmp(key, "len")) {
             ota_info.len = strtoul(value, NULL, 10);
         } else if (0 == strcmp(key, "md5")) {
-            if(base64_dec_len(value, 22) == 16) {
-              base64_decode((char *)ota_info.md5, value,  22);
+            if(strlen(value) == 24 && base64_dec_len(value, 24) == 16) {
+              base64_decode((char *)ota_info.md5, value,  24);
+            } else {
+              dbgPrintln(DEBUG_OTA, "Failed to parse md5");
             }
         }
     }
@@ -547,7 +551,9 @@ ota_info_t ESP8266MQTTMesh::parse_ota_info(const char *str) {
 bool ESP8266MQTTMesh::check_ota_md5() {
     uint8_t buf[128];
     File f = SPIFFS.open("/ota", "r");
-    read_until(f, (char *)buf, '\n', sizeof(buf));
+    buf[f.readBytesUntil('\n', buf, sizeof(buf)-1)] = 0;
+    f.close();
+    dbgPrintln(DEBUG_OTA_EXTRA, "Read /ota: " + String((char *)buf));
     ota_info_t ota_info = parse_ota_info((char *)buf);
     if (ota_info.len > freeSpaceEnd - freeSpaceStart) {
         return false;
@@ -579,35 +585,57 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
     char *end;
     unsigned int id = strtoul(cmd,&end, 16);
 
-    dbgPrintln(DEBUG_OTA_EXTRA, "OTA cmd" + String(cmd) + " Length: " + String(strlen(msg)));
+    dbgPrintln(DEBUG_OTA_EXTRA, "OTA cmd " + String(cmd) + " Length: " + String(strlen(msg)));
     if (id != firmware_id || *end != '/') {
+        dbgPrintln(DEBUG_OTA, "Ignoring OTA because firmwareID did not match " + String(firmware_id, HEX));
         return;
     }
     cmd += (end - cmd) + 1; //skip ID
     if(0 == strcmp(cmd, "start")) {
+        dbgPrintln(DEBUG_OTA_EXTRA, "OTA Start");
         ota_info_t ota_info = parse_ota_info(msg);
         if (ota_info.len == 0) {
+            dbgPrintln(DEBUG_OTA, "Ignoring OTA because firmware length = 0");
             return;
         }
+        dbgPrintln(DEBUG_OTA, "-> " + String(msg));
         File f = SPIFFS.open("/ota", "w");
         f.print(msg);
         f.print("\n");
+        f.close();
+        f = SPIFFS.open("/ota", "r");
+        char buf[128];
+        buf[f.readBytesUntil('\n', buf, sizeof(buf)-1)] = 0;
+        f.close();
+        dbgPrintln(DEBUG_OTA, "--> " + String(buf));
         if (ota_info.len > freeSpaceEnd - freeSpaceStart) {
             dbgPrintln(DEBUG_MSG, "Not enough space for firmware: " + String(ota_info.len) + " > " + String(freeSpaceEnd - freeSpaceStart));
             return;
         }
+        int end = (freeSpaceStart + ota_info.len + FLASH_SECTOR_SIZE - 1) & (~(FLASH_SECTOR_SIZE - 1));
         //erase flash area here
-        dbgPrintln(DEBUG_OTA, "Erasing " + String((freeSpaceEnd - freeSpaceStart)/ FLASH_SECTOR_SIZE) + " sectors");
-        for (int i = freeSpaceStart / FLASH_SECTOR_SIZE; i < freeSpaceEnd / FLASH_SECTOR_SIZE; i++) {
-           bool result = ESP.flashEraseSector(i);
+        dbgPrintln(DEBUG_OTA, "Erasing " + String((end - freeSpaceStart)/ FLASH_SECTOR_SIZE) + " sectors");
+        long t = micros();
+        for (int i = freeSpaceStart / FLASH_SECTOR_SIZE; i < end / FLASH_SECTOR_SIZE; i++) {
+           ESP.flashEraseSector(i);
            yield();
         }
+        dbgPrintln(DEBUG_OTA, "Erase complete in " +  String((micros() - t) / 1000000.0, 6) + " seconds");
     }
     else if(0 == strcmp(cmd, "check")) {
-        const char *md5ok = check_ota_md5() ? "MD5 Passed" : "MD5 Failed";
-        dbgPrintln(DEBUG_OTA, md5ok);
-        //Note that this will destroy the buffer, so don't look at msg after this
-        publish("check", md5ok);
+        if (strlen(msg) > 0) {
+            char out[33];
+            MD5Builder _md5;
+            _md5.begin();
+            _md5.add((uint8_t *)msg, strlen(msg));
+            _md5.calculate();
+            _md5.getChars(out);
+            publish("check", out);
+        } else {
+            const char *md5ok = check_ota_md5() ? "MD5 Passed" : "MD5 Failed";
+            dbgPrintln(DEBUG_OTA, md5ok);
+            publish("check", md5ok);
+        }
     }
     else if(0 == strcmp(cmd, "flash")) {
         if (! check_ota_md5()) {
@@ -617,7 +645,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         }
         uint8_t buf[128];
         File f = SPIFFS.open("/ota", "r");
-        read_until(f, (char *)buf, '\n', sizeof(buf));
+        buf[f.readBytesUntil('\n', buf, sizeof(buf)-1)] = 0;
         ota_info_t ota_info = parse_ota_info((char *)buf);
         dbgPrintln(DEBUG_OTA, "Flashing");
         
@@ -643,12 +671,15 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
             return;
         }
         byte data[768];
+        long t = micros();
         int len = base64_decode((char *)data, msg, msglen);
         if (address + len > freeSpaceEnd) {
             dbgPrintln(DEBUG_MSG, "Message length would run past end of free space");
             return;
         }
+        dbgPrintln(DEBUG_OTA_EXTRA, "Got " + String(len) + " bytes FW @ " + String(address, HEX));
         bool ok = ESP.flashWrite(freeSpaceStart + address, (uint32_t*) data, len);
+        dbgPrintln(DEBUG_OTA, "Wrote " + String(len) + " bytes in " +  String((micros() - t) / 1000000.0, 6) + " seconds");
         yield();
         if (! ok) {
             dbgPrintln(DEBUG_MSG, "Failed to write firmware at " + String(freeSpaceStart + address, HEX) + " Length: " + String(len));

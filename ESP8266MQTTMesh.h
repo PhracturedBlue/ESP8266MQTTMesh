@@ -39,6 +39,7 @@ typedef struct {
 class ESP8266MQTTMesh {
 private:
     unsigned int firmware_id;
+    const char   *firmware_ver;
     const char   **networks;
     const char   *network_password;
     const char   *mesh_password;
@@ -84,7 +85,7 @@ private:
     ota_info_t parse_ota_info(const char *str);
     bool check_ota_md5();
 public:
-    ESP8266MQTTMesh(unsigned int firmware_id,
+    ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
                     const char **networks, const char *network_password, const char *mesh_password,
                     const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
                     const char *inTopic, const char *outTopic);
@@ -93,6 +94,5 @@ public:
     void loop();
     void publish(const char *subtopic, const char *msg);
     static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);
-    static int  read_until(Stream &f, char *buf, char delim, int len);
 };
 #endif //_ESP8266MQTTMESH_H_

@@ -47,6 +47,7 @@
 #endif
 
 #define      FIRMWARE_ID        0x4455
+#define      FIRMWARE_VER       "0.8a"
 const char*  networks[]       = NETWORK_LIST;
 const char*  network_password = NETWORK_PASSWORD;
 const char*  mesh_password    = MESH_PASSWORD;
@@ -83,13 +84,13 @@ double hlw8012_getCurrent();
 unsigned int hlw8012_getVoltage();
 #endif
 
-ESP8266MQTTMesh mesh(FIRMWARE_ID,
+ESP8266MQTTMesh mesh(FIRMWARE_ID, FIRMWARE_VER,
                      networks, network_password, mesh_password,
                      base_ssid, mqtt_server, mqtt_port, mesh_port,
                      IN_TOPIC, OUT_TOPIC);
 
 bool relayState = false;
-int  heartbeat  = 300000;
+int  heartbeat  = 60000;
 float temperature = 0.0;
 
 void read_config();
@@ -264,7 +265,7 @@ void read_config() {
         char s[32];
         char key[32];
         const char *value;
-        ESP8266MQTTMesh::read_until(f, s, '\n', sizeof(s));
+        s[f.readBytesUntil('\n', s, sizeof(s)-1)] = 0;
         if (! ESP8266MQTTMesh::keyValue(s, '=', key, sizeof(key), &value)) {
             continue;
         }
