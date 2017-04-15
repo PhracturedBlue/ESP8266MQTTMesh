@@ -25,6 +25,22 @@ extern "C" {
   uint32_t _SPIFFS_start;
 }
 
+#define DEBUG_EXTRA         0x10000000
+#define DEBUG_MSG           0x00000001
+#define DEBUG_MSG_EXTRA     (DEBUG_EXTRA | DEBUG_MSG)
+#define DEBUG_WIFI          0x00000002
+#define DEBUG_WIFI_EXTRA    (DEBUG_EXTRA | DEBUG_WIFI)
+#define DEBUG_MQTT          0x00000004
+#define DEBUG_MQTT_EXTRA    (DEBUG_EXTRA | DEBUG_MQTT)
+#define DEBUG_OTA           0x00000008
+#define DEBUG_OTA_EXTRA     (DEBUG_EXTRA | DEBUG_OTA)
+#define DEBUG_ALL           0xFFFFFFFF
+#define DEBUG_NONE          0x00000000
+
+//#define DEBUG_LEVEL (DEBUG_WIFI | DEBUG_MQTT | DEBUG_OTA)
+#define DEBUG_LEVEL DEBUG_ALL
+#define dbgPrint(lvl, msg) if (((lvl) & (DEBUG_LEVEL)) == (lvl)) Serial.print(msg)
+#define dbgPrintln(lvl, msg) if (((lvl) & (DEBUG_LEVEL)) == (lvl)) Serial.println(msg)
 size_t strlcat (char *dst, const char *src, size_t len) {
     size_t slen = strlen(dst);
     return strlcpy(dst + slen, src, len - slen);
@@ -46,11 +62,11 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
         mqttClient(espClient)
 {
     if (strlen(inTopic) > 16) {
-        Serial.println("Max inTopicLen == 16");
+        dbgPrintln(DEBUG_MSG, "Max inTopicLen == 16");
         die();
     }
     if (strlen(outTopic) > 16) {
-        Serial.println("Max outTopicLen == 16");
+        dbgPrintln(DEBUG_MSG, "Max outTopicLen == 16");
         die();
     }
     mySSID[0] = 0;
@@ -59,6 +75,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
     // round one sector up
     freeSpaceStart = (usedSize + FLASH_SECTOR_SIZE - 1) & (~(FLASH_SECTOR_SIZE - 1));
     freeSpaceEnd = (uint32_t)&_SPIFFS_start - 0x40200000;
+    dbgPrintln(DEBUG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
 #endif
 }
 
@@ -66,13 +83,13 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
     callback = _callback;
 }
 void ESP8266MQTTMesh::setup() {
-    Serial.println("Starting");
+    dbgPrintln(DEBUG_MSG_EXTRA, "Starting");
     if (! SPIFFS.begin()) {
       SPIFFS.format();
-      Serial.println("Formatting FS");
+      dbgPrintln(DEBUG_MSG_EXTRA, "Formatting FS");
       if (! SPIFFS.begin()) {
-        Serial.println("Failed to format FS");
-        while(1);
+        dbgPrintln(DEBUG_MSG, "Failed to format FS");
+        die();
       }
     }
     Dir dir = SPIFFS.openDir("/bssid/");
@@ -96,7 +113,7 @@ void ESP8266MQTTMesh::loop() {
        connect();
        lastReconnect = millis();
        if (! connected()) {
-           Serial.println("WiFi Connection Failed");
+           dbgPrintln(DEBUG_MSG, "WiFi Connection Failed");
            return;
        }
     }
@@ -109,7 +126,7 @@ void ESP8266MQTTMesh::loop() {
            connect_mqtt();
            lastReconnect = millis();
            if (! mqttClient.connected()) {
-               Serial.println("MQTT Connection Failed");
+               dbgPrintln(DEBUG_MSG, "MQTT Connection Failed");
                return;
            }
         }
@@ -134,53 +151,53 @@ void ESP8266MQTTMesh::loop() {
 
 bool ESP8266MQTTMesh::match_bssid(const char *bssid) {
     char filename[32];
-    Serial.println("Trying to match known BSSIDs for " + String(bssid));
+    dbgPrintln(DEBUG_WIFI, "Trying to match known BSSIDs for " + String(bssid));
     strlcpy(filename, "/bssid/", sizeof(filename));
     strlcat(filename, bssid, sizeof(filename));
     return SPIFFS.exists(filename);
 }
 
 void ESP8266MQTTMesh::connect() {
-    Serial.print("Scanning for networks\n");
+    dbgPrintln(DEBUG_WIFI, "Scanning for networks");
     int numberOfNetworksFound = WiFi.scanNetworks(false,true);
-    Serial.print("Found: "); Serial.println(numberOfNetworksFound);
+    dbgPrintln(DEBUG_WIFI, "Found: " + String(numberOfNetworksFound));
     int best_match = -1;
     long maxRSSI = LONG_MIN;
 
     for(int i = 0; i < numberOfNetworksFound; i++) {
         bool found = false;
         const char *ssid = WiFi.SSID(i).c_str();
-        Serial.println("Found SSID: '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(i) + "'");
+        dbgPrintln(DEBUG_WIFI, "Found SSID: '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(i) + "'");
         if (ssid[0] != 0) {
             for(int j = 0; networks[j] != NULL && networks[j][0] != 0; j++) {
                 if(strcmp(ssid, networks[j]) == 0) {
-                    Serial.println("Matched");
+                    dbgPrintln(DEBUG_WIFI, "Matched");
                     found = true;
                     break;
                 }
             }
             if(! found) {
-                Serial.println("Did not match SSID list");
+                dbgPrintln(DEBUG_WIFI, "Did not match SSID list");
                 continue;
             }
             if (0) {
                 FSInfo fs_info;
                 SPIFFS.info(fs_info);
                 if (fs_info.usedBytes !=0) {
-                    Serial.println("Trying to match known BSSIDs for " + WiFi.BSSIDstr(i));
+                    dbgPrintln(DEBUG_WIFI, "Trying to match known BSSIDs for " + WiFi.BSSIDstr(i));
                     if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
-                        Serial.println("Failed to match BSSID");
+                        dbgPrintln(DEBUG_WIFI, "Failed to match BSSID");
                         continue;
                     }
                 }
             }
         } else {
             if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
-                Serial.println("Failed to match BSSID");
+                dbgPrintln(DEBUG_WIFI, "Failed to match BSSID");
                 continue;
             }
         }
-        Serial.print("RSSI: "); Serial.println(WiFi.RSSI(i));
+        dbgPrintln(DEBUG_WIFI, "RSSI: " + String(WiFi.RSSI(i)));
         if (WiFi.RSSI(i) > maxRSSI) {
             maxRSSI = WiFi.RSSI(i);
             best_match = i;
@@ -205,19 +222,19 @@ void ESP8266MQTTMesh::connect() {
             strlcpy(ssid, WiFi.SSID(best_match).c_str(), sizeof(ssid));
             meshConnect = false;
         }
-        Serial.println("Connecting to SSID : '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(best_match) + "'");
+        dbgPrintln(DEBUG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(best_match) + "'");
         const char *password = meshConnect ? mesh_password : network_password;
         //WiFi.begin(ssid.c_str(), password.c_str(), 0, WiFi.BSSID(best_match), true);
         WiFi.begin(ssid, password);
         for (int i = 0; i < 120 && ! connected(); i++) {
             delay(500);
-            Serial.println(WiFi.status());
+            dbgPrintln(DEBUG_WIFI, WiFi.status());
             //Serial.print(".");
         }
         if (connected()) {
-            Serial.println("WiFi connected");
-            Serial.println("IP address: ");
-            Serial.println(WiFi.localIP());
+            dbgPrintln(DEBUG_WIFI, "WiFi connected");
+            dbgPrintln(DEBUG_WIFI, "IP address: ");
+            dbgPrintln(DEBUG_WIFI, WiFi.localIP());
             if (match_bssid(WiFi.softAPmacAddress().c_str())) {
                 setup_AP();
             }
@@ -241,7 +258,7 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
       }
       File f = SPIFFS.open(filename, "w");
       if (! f) {
-          Serial.println("Failed to write /" + String(bssid));
+          dbgPrintln(DEBUG_MQTT, "Failed to write /" + String(bssid));
           return;
       }
       f.print(msg);
@@ -271,23 +288,23 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
 }
 
 void ESP8266MQTTMesh::mqtt_callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
+  dbgPrint(DEBUG_MQTT, "Message arrived [");
+  dbgPrint(DEBUG_MQTT, topic);
+  dbgPrint(DEBUG_MQTT, "] ");
   int len = strlen(topic);
   strlcpy(buffer, topic, sizeof(buffer));
   buffer[len++] = '=';
   memcpy(buffer + len, payload, sizeof(buffer)-len > length ? length : sizeof(buffer)-len);
-  Serial.println(buffer+len);
+  dbgPrintln(DEBUG_MQTT, buffer+len);
   parse_message(topic, buffer+len);
   broadcast_message(buffer);
 }
 
 void ESP8266MQTTMesh::connect_mqtt() {
-    Serial.print("Attempting MQTT connection...");
+    dbgPrintln(DEBUG_MQTT, "Attempting MQTT connection...");
     // Attempt to connect
     if (mqttClient.connect(String("ESP8266-" + WiFi.softAPmacAddress()).c_str())) {
-      Serial.println("connected");
+      dbgPrintln(DEBUG_MQTT, "connected");
       // Once connected, publish an announcement...
       char publishMsg[TOPIC_LEN];
       strlcpy(publishMsg, outTopic, sizeof(publishMsg));
@@ -299,9 +316,9 @@ void ESP8266MQTTMesh::connect_mqtt() {
       strlcat(subscribe, "#", sizeof(subscribe));
       mqttClient.subscribe(subscribe);
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(mqttClient.state());
-      Serial.println(" try again in 5 seconds");
+      dbgPrint(DEBUG_MQTT, "failed, rc=");
+      dbgPrint(DEBUG_MQTT, mqttClient.state());
+      dbgPrintln(DEBUG_MQTT, " try again in 5 seconds");
       // Wait 5 seconds before retrying
     }
 }
@@ -338,7 +355,7 @@ void ESP8266MQTTMesh::setup_AP() {
     IPAddress apSubmask(255, 255, 255, 0);
     WiFi.softAPConfig(apIP, apGateway, apSubmask);
     WiFi.softAP(mySSID, mesh_password, 1, 1);
-    Serial.println("Initialized AP as '" + String(mySSID) + "'  IP '" + apIP.toString() + "'");
+    dbgPrintln(DEBUG_WIFI, "Initialized AP as '" + String(mySSID) + "'  IP '" + apIP.toString() + "'");
     strlcat(mySSID, "/", sizeof(mySSID));
     espServer.begin();
     if (meshConnect) {
@@ -359,14 +376,14 @@ int ESP8266MQTTMesh::read_subdomain(const char *fileName) {
       char subdomain[4];
       File f = SPIFFS.open(fileName, "r");
       if (! f) {
-          Serial.println("Failed to read " + String(fileName));
+          dbgPrintln(DEBUG_WIFI, "Failed to read " + String(fileName));
           return -1;
       }
       read_until(f, subdomain, '\n', sizeof(subdomain));
       f.close();
       int value = atoi(subdomain);
       if (value < 0 || value > 255) {
-          Serial.print("Illegal value '" + String(subdomain) + "' from " + String(fileName));
+          dbgPrintln(DEBUG_WIFI, "Illegal value '" + String(subdomain) + "' from " + String(fileName));
           return -1;
       }
       return value;
@@ -380,14 +397,14 @@ void ESP8266MQTTMesh::assign_subdomain() {
       if (value == -1) {
           continue;
       }
-      Serial.println("Mapping " + dir.fileName() + " to " + String(value) + " ");
+      dbgPrintln(DEBUG_MQTT, "Mapping " + dir.fileName() + " to " + String(value) + " ");
       seen[value] = 1;
     }
     for (int i = 4; i < 256; i++) {
         if (! seen[i]) {
             File f = SPIFFS.open("/bssid/" +  WiFi.softAPmacAddress(), "w");
             if (! f) {
-                Serial.println("Couldn't write "  + WiFi.softAPmacAddress());
+                dbgPrintln(DEBUG_WIFI, "Couldn't write "  + WiFi.softAPmacAddress());
                 die();
             }
             f.print(i);
@@ -399,7 +416,7 @@ void ESP8266MQTTMesh::assign_subdomain() {
             itoa(i, msg, 10);
             strlcpy(topic, inTopic, sizeof(topic));
             strlcat(topic, "bssid/", sizeof(topic));
-            Serial.println("Publishing " + String(topic) + " == " + String(i));
+            dbgPrintln(DEBUG_MQTT, "Publishing " + String(topic) + " == " + String(i));
             mqttClient.publish(topic, msg, true);
             return;
         }
@@ -413,9 +430,9 @@ void ESP8266MQTTMesh::send_message(IPAddress ip, const char *msg) {
         client.print("\n");
         client.flush();
         client.stop();
-        Serial.println("Sending '" + String(msg) + "' to " + ip.toString());
+        dbgPrintln(DEBUG_MQTT, "Sending '" + String(msg) + "' to " + ip.toString());
     } else {
-        Serial.println("Failed to send message '" + String(msg) + "' to " + ip.toString());
+        dbgPrintln(DEBUG_MQTT, "Failed to send message '" + String(msg) + "' to " + ip.toString());
     }
 }
 
@@ -424,7 +441,7 @@ void ESP8266MQTTMesh::broadcast_message(const char *msg) {
     while (station_list != NULL) {
         char station_mac[18] = {0}; sprintf(station_mac, "%02X:%02X:%02X:%02X:%02X:%02X", MAC2STR(station_list->bssid));
         IPAddress station_ip = IPAddress((&station_list->ip)->addr);
-        Serial.println("Broadcasting to: " + String(station_mac) + " @ " + station_ip.toString());
+        dbgPrintln(DEBUG_MQTT, "Broadcasting to: " + String(station_mac) + " @ " + station_ip.toString());
         send_message(station_ip, msg);
         station_list = STAILQ_NEXT(station_list, next);
     }
@@ -455,9 +472,11 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
         if (client.available()) {
             read_until(client, buffer, '\n', sizeof(buffer));
             bool isLocal = (client.localIP() == WiFi.localIP() ? true : false);
-            Serial.println("Received: msg from " + client.remoteIP().toString() + " on " + (isLocal ? "STA" : "AP"));
-            Serial.println("1: " + client.localIP().toString() + " 2: " + WiFi.localIP().toString() + " 3: " + WiFi.softAPIP().toString());
-            Serial.print("--> '"); Serial.print(buffer); Serial.println("'");
+            dbgPrintln(DEBUG_MQTT, "Received: msg from " + client.remoteIP().toString() + " on " + (isLocal ? "STA" : "AP"));
+            dbgPrintln(DEBUG_MQTT_EXTRA, "1: " + client.localIP().toString() + " 2: " + WiFi.localIP().toString() + " 3: " + WiFi.softAPIP().toString());
+            dbgPrint(DEBUG_MQTT_EXTRA, "--> '");
+            dbgPrint(DEBUG_MQTT_EXTRA, buffer);
+            dbgPrintln(DEBUG_MQTT_EXTRA, "'");
             client.flush();
             client.stop();
             char topic[64];
