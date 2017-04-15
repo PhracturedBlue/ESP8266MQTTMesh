@@ -59,7 +59,7 @@ def main():
         client.publish("esp8266-in/ota/" + args.id + "/" + str(pos), d)
         pos += int(len(d) * 3 / 4);
         time.sleep(0.2)
-        if pos % (1024 *10) == 0:
+        if pos % (768 * 13) == 0:
             print("Transmitted %d bytes" % (pos))
     print("Completed send")
     client.publish("esp8266-in/ota/" + args.id + "/check", "")

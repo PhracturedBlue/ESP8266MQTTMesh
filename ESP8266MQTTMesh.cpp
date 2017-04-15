@@ -656,7 +656,13 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         ebcmd.args[2] = ota_info.len;
         eboot_command_write(&ebcmd);
         //publish("flash", "Success");
+
+        WiFi.softAPdisconnect();
+        mqttClient.disconnect();
+        espServer.stop();
+        delay(100);
         ESP.restart();
+        die();
     }
     else {
         char *end;

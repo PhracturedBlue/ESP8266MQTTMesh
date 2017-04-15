@@ -47,7 +47,7 @@
 #endif
 
 #define      FIRMWARE_ID        0x4455
-#define      FIRMWARE_VER       "0.8a"
+#define      FIRMWARE_VER       "0.8"
 const char*  networks[]       = NETWORK_LIST;
 const char*  network_password = NETWORK_PASSWORD;
 const char*  mesh_password    = MESH_PASSWORD;
