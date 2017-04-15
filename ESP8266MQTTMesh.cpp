@@ -22,23 +22,14 @@
 #include <limits.h>
 extern "C" {
   #include "user_interface.h"
-  uint32_t _SPIFFS_start;
+  extern uint32_t _SPIFFS_start;
 }
 
-#define DEBUG_EXTRA         0x10000000
-#define DEBUG_MSG           0x00000001
-#define DEBUG_MSG_EXTRA     (DEBUG_EXTRA | DEBUG_MSG)
-#define DEBUG_WIFI          0x00000002
-#define DEBUG_WIFI_EXTRA    (DEBUG_EXTRA | DEBUG_WIFI)
-#define DEBUG_MQTT          0x00000004
-#define DEBUG_MQTT_EXTRA    (DEBUG_EXTRA | DEBUG_MQTT)
-#define DEBUG_OTA           0x00000008
-#define DEBUG_OTA_EXTRA     (DEBUG_EXTRA | DEBUG_OTA)
-#define DEBUG_ALL           0xFFFFFFFF
-#define DEBUG_NONE          0x00000000
 
 //#define DEBUG_LEVEL (DEBUG_WIFI | DEBUG_MQTT | DEBUG_OTA)
 #define DEBUG_LEVEL DEBUG_ALL
+
+
 #define dbgPrint(lvl, msg) if (((lvl) & (DEBUG_LEVEL)) == (lvl)) Serial.print(msg)
 #define dbgPrintln(lvl, msg) if (((lvl) & (DEBUG_LEVEL)) == (lvl)) Serial.println(msg)
 size_t strlcat (char *dst, const char *src, size_t len) {
@@ -46,9 +37,11 @@ size_t strlcat (char *dst, const char *src, size_t len) {
     return strlcpy(dst + slen, src, len - slen);
 }
 
-ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_password, const char *mesh_password,
+ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id,
+                                 const char **networks, const char *network_password, const char *mesh_password,
                                  const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
                                  const char *inTopic,   const char *outTopic) :
+        firmware_id(firmware_id),
         networks(networks),
         network_password(network_password),
         mesh_password(mesh_password),
@@ -74,8 +67,8 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
     uint32_t usedSize = ESP.getSketchSize();
     // round one sector up
     freeSpaceStart = (usedSize + FLASH_SECTOR_SIZE - 1) & (~(FLASH_SECTOR_SIZE - 1));
-    freeSpaceEnd = (uint32_t)&_SPIFFS_start - 0x40200000;
-    dbgPrintln(DEBUG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
+    //freeSpaceEnd = (uint32_t)&_SPIFFS_start - 0x40200000;
+    freeSpaceEnd = ESP.getFreeSketchSpace() + freeSpaceStart;
 #endif
 }
 
@@ -84,24 +77,31 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
 }
 void ESP8266MQTTMesh::setup() {
     dbgPrintln(DEBUG_MSG_EXTRA, "Starting");
+#if HAS_OTA
+    dbgPrintln(DEBUG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
+#endif
     if (! SPIFFS.begin()) {
-      SPIFFS.format();
       dbgPrintln(DEBUG_MSG_EXTRA, "Formatting FS");
+      SPIFFS.format();
       if (! SPIFFS.begin()) {
         dbgPrintln(DEBUG_MSG, "Failed to format FS");
         die();
       }
     }
+Serial.println("1");
     Dir dir = SPIFFS.openDir("/bssid/");
+Serial.println("2");
     while(dir.next()) {
       Serial.println(" ==> '" + dir.fileName() + "'");
     }
+Serial.println("3");
     WiFi.mode(WIFI_AP_STA);
     WiFi.disconnect();
   
     mqttClient.setServer(mqtt_server, mqtt_port);
     mqttClient.setCallback([this] (char* topic, byte* payload, unsigned int length) { this->mqtt_callback(topic, payload, length); });
     Serial.print(WiFi.status());
+    dbgPrintln(DEBUG_MSG_EXTRA, "Setup Complete");
 }
 
 void ESP8266MQTTMesh::loop() {
@@ -166,7 +166,8 @@ void ESP8266MQTTMesh::connect() {
 
     for(int i = 0; i < numberOfNetworksFound; i++) {
         bool found = false;
-        const char *ssid = WiFi.SSID(i).c_str();
+        char ssid[32];
+        strlcpy(ssid, WiFi.SSID(i).c_str(), sizeof(ssid));
         dbgPrintln(DEBUG_WIFI, "Found SSID: '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(i) + "'");
         if (ssid[0] != 0) {
             for(int j = 0; networks[j] != NULL && networks[j][0] != 0; j++) {
@@ -287,17 +288,17 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   }
 }
 
-void ESP8266MQTTMesh::mqtt_callback(char* topic, byte* payload, unsigned int length) {
+void ESP8266MQTTMesh::mqtt_callback(const char* topic, const byte* payload, unsigned int length) {
   dbgPrint(DEBUG_MQTT, "Message arrived [");
   dbgPrint(DEBUG_MQTT, topic);
   dbgPrint(DEBUG_MQTT, "] ");
   int len = strlen(topic);
   strlcpy(buffer, topic, sizeof(buffer));
   buffer[len++] = '=';
-  memcpy(buffer + len, payload, sizeof(buffer)-len > length ? length : sizeof(buffer)-len);
-  dbgPrintln(DEBUG_MQTT, buffer+len);
-  parse_message(topic, buffer+len);
+  strlcpy(buffer + len, (char *)payload, sizeof(buffer)-len > length ? length : sizeof(buffer)-len);
+  dbgPrintln(DEBUG_MQTT, buffer);
   broadcast_message(buffer);
+  parse_message(topic, buffer+len);
 }
 
 void ESP8266MQTTMesh::connect_mqtt() {
@@ -325,16 +326,15 @@ void ESP8266MQTTMesh::connect_mqtt() {
 
 void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg) {
     char topic[64];
-    strlcpy(buffer, outTopic, sizeof(buffer));
-    strlcat(buffer, mySSID, sizeof(buffer));
-    strlcat(buffer, subtopic, sizeof(buffer));
+    strlcpy(topic, outTopic, sizeof(topic));
+    strlcat(topic, mySSID, sizeof(topic));
+    strlcat(topic, subtopic, sizeof(topic));
+    dbgPrintln(DEBUG_MQTT_EXTRA, "Sending: " + String(topic) + "=" + String(msg));
     if (meshConnect) {
         // Send message through mesh network
-        strlcat(buffer, "=", sizeof(buffer));
-        strlcat(buffer, msg, sizeof(buffer));
-        send_message(WiFi.gatewayIP(), buffer);
+        send_message(WiFi.gatewayIP(), topic, msg);
     } else {
-        mqttClient.publish(buffer, msg);
+        mqttClient.publish(topic, msg);
     }
 }
 
@@ -381,7 +381,7 @@ int ESP8266MQTTMesh::read_subdomain(const char *fileName) {
       }
       read_until(f, subdomain, '\n', sizeof(subdomain));
       f.close();
-      int value = atoi(subdomain);
+      unsigned int value = strtoul(subdomain, NULL, 10);
       if (value < 0 || value > 255) {
           dbgPrintln(DEBUG_WIFI, "Illegal value '" + String(subdomain) + "' from " + String(fileName));
           return -1;
@@ -423,14 +423,18 @@ void ESP8266MQTTMesh::assign_subdomain() {
     }
     die();
 }
-void ESP8266MQTTMesh::send_message(IPAddress ip, const char *msg) {
+void ESP8266MQTTMesh::send_message(IPAddress ip, const char *topicOrMsg, const char *msg) {
     WiFiClient client;
     if (client.connect(ip, mesh_port)) {
-        client.print(msg);
+        client.print(topicOrMsg);
+        if (msg) {
+            client.print("=");
+            client.print(msg);
+        }
         client.print("\n");
         client.flush();
         client.stop();
-        dbgPrintln(DEBUG_MQTT, "Sending '" + String(msg) + "' to " + ip.toString());
+        dbgPrintln(DEBUG_MQTT, "Sent '" + String(topicOrMsg) + (msg ? String("=" + String(msg)) : "") + "' to " + ip.toString());
     } else {
         dbgPrintln(DEBUG_MQTT, "Failed to send message '" + String(msg) + "' to " + ip.toString());
     }
@@ -530,10 +534,8 @@ ota_info_t ESP8266MQTTMesh::parse_ota_info(const char *str) {
         if (! keyValue(kv, ':', key, sizeof(key), &value)) {
             continue;
         }
-        if (0 == strcmp(key, "id")) {
-            ota_info.id = atoi(value);
-        } else if (0 == strcmp(key, "len")) {
-            ota_info.len = atoi(value);
+        if (0 == strcmp(key, "len")) {
+            ota_info.len = strtoul(value, NULL, 10);
         } else if (0 == strcmp(key, "md5")) {
             if(base64_dec_len(value, 22) == 16) {
               base64_decode((char *)ota_info.md5, value,  22);
@@ -574,29 +576,42 @@ bool ESP8266MQTTMesh::check_ota_md5() {
 }
 
 void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
+    char *end;
+    unsigned int id = strtoul(cmd,&end, 16);
+
+    dbgPrintln(DEBUG_OTA_EXTRA, "OTA cmd" + String(cmd) + " Length: " + String(strlen(msg)));
+    if (id != firmware_id || *end != '/') {
+        return;
+    }
+    cmd += (end - cmd) + 1; //skip ID
     if(0 == strcmp(cmd, "start")) {
         ota_info_t ota_info = parse_ota_info(msg);
-        if (ota_info.id == 0 || ota_info.len == 0) {
+        if (ota_info.len == 0) {
             return;
         }
         File f = SPIFFS.open("/ota", "w");
         f.print(msg);
         f.print("\n");
-        if (ESP.getFreeSketchSpace() > freeSpaceEnd - freeSpaceStart) {
+        if (ota_info.len > freeSpaceEnd - freeSpaceStart) {
+            dbgPrintln(DEBUG_MSG, "Not enough space for firmware: " + String(ota_info.len) + " > " + String(freeSpaceEnd - freeSpaceStart));
             return;
         }
         //erase flash area here
+        dbgPrintln(DEBUG_OTA, "Erasing " + String((freeSpaceEnd - freeSpaceStart)/ FLASH_SECTOR_SIZE) + " sectors");
         for (int i = freeSpaceStart / FLASH_SECTOR_SIZE; i < freeSpaceEnd / FLASH_SECTOR_SIZE; i++) {
            bool result = ESP.flashEraseSector(i);
            yield();
         }
     }
     else if(0 == strcmp(cmd, "check")) {
+        const char *md5ok = check_ota_md5() ? "MD5 Passed" : "MD5 Failed";
+        dbgPrintln(DEBUG_OTA, md5ok);
         //Note that this will destroy the buffer, so don't look at msg after this
-        publish("check", check_ota_md5() ? "MD5 Passed" : "MD5 Failed");
+        publish("check", md5ok);
     }
     else if(0 == strcmp(cmd, "flash")) {
         if (! check_ota_md5()) {
+            dbgPrintln(DEBUG_MSG, "Flash failed due to md5 mismatch");
             publish("flash", "Failed");
             return;
         }
@@ -604,6 +619,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         File f = SPIFFS.open("/ota", "r");
         read_until(f, (char *)buf, '\n', sizeof(buf));
         ota_info_t ota_info = parse_ota_info((char *)buf);
+        dbgPrintln(DEBUG_OTA, "Flashing");
         
         eboot_command ebcmd;
         ebcmd.action = ACTION_COPY_RAW;
@@ -616,20 +632,26 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
     }
     else {
         char *end;
-        int address = strtol(cmd, &end, 10);
+        unsigned int address = strtoul(cmd, &end, 10);
         if (address > freeSpaceEnd - freeSpaceStart || end != cmd + strlen(cmd)) {
+            dbgPrintln(DEBUG_MSG, "Illegal address " + String(address) + " specified");
             return;
         }
         int msglen = strlen(msg);
         if (msglen > 1024) {
+            dbgPrintln(DEBUG_MSG, "Message length " + String(msglen) + " too long");
             return;
         }
         byte data[768];
         int len = base64_decode((char *)data, msg, msglen);
         if (address + len > freeSpaceEnd) {
+            dbgPrintln(DEBUG_MSG, "Message length would run past end of free space");
             return;
         }
-        ESP.flashWrite(freeSpaceStart + address, (uint32_t*) data, len);
+        bool ok = ESP.flashWrite(freeSpaceStart + address, (uint32_t*) data, len);
         yield();
+        if (! ok) {
+            dbgPrintln(DEBUG_MSG, "Failed to write firmware at " + String(freeSpaceStart + address, HEX) + " Length: " + String(len));
+        }
     }
 }

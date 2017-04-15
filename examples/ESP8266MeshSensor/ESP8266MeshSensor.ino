@@ -46,7 +46,7 @@
     #include <PubSubClient.h>
 #endif
 
-
+#define      FIRMWARE_ID        0x4455
 const char*  networks[]       = NETWORK_LIST;
 const char*  network_password = NETWORK_PASSWORD;
 const char*  mesh_password    = MESH_PASSWORD;
@@ -83,7 +83,8 @@ double hlw8012_getCurrent();
 unsigned int hlw8012_getVoltage();
 #endif
 
-ESP8266MQTTMesh mesh(networks, network_password, mesh_password,
+ESP8266MQTTMesh mesh(FIRMWARE_ID,
+                     networks, network_password, mesh_password,
                      base_ssid, mqtt_server, mqtt_port, mesh_port,
                      IN_TOPIC, OUT_TOPIC);
 
@@ -110,15 +111,18 @@ void setup() {
     ds18b20.setWaitForConversion(false);
     ds18b20.requestTemperatures();
 #endif
+Serial.println("HLW8012 start");
 #if HAS_HLW8012
     hlw8012.begin(HLW8012_CF, HLW8012_CF1, HLW8012_SEL, HIGH, true);
     hlw8012.setResistors(HLW8012_CURRENT_R, HLW8012_VOLTAGE_R_UP, HLW8012_VOLTAGE_R_DOWN);
     hlw8012_enable_interrupts(true);
 #endif
+Serial.println("HLW8012 end");
     //mesh.setup will initialize the filesystem
     if (SPIFFS.exists("/config")) {
         read_config();
     }
+Serial.println("config end");
     digitalWrite(RELAY, relayState);
 }
 
