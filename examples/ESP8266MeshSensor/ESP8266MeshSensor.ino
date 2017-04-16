@@ -21,7 +21,7 @@
 #define GREEN_LED   15 //MTDO
 #define RELAY       12 //MTDI
 #define BUTTON       0 //GPIO0
-#define DS18B20      2 //GPIO2
+//#define DS18B20      2 //GPIO2
 #define HLW8012_SEL  5 //GPIO5
 #define HLW8012_CF  14 //MTMS
 #define HLW8012_CF1 13 //MTCK
@@ -46,7 +46,16 @@
     #include <PubSubClient.h>
 #endif
 
-#define      FIRMWARE_ID        0x4455
+#if HAS_DS18B20 && HAS_HLW8012
+    #define      FIRMWARE_ID        0x4455
+#elif HAS_DS18B20
+    #define      FIRMWARE_ID        0x4454
+#elif HAS_HLW8012
+    #define      FIRMWARE_ID        0x4453
+#else
+    #define      FIRMWARE_ID        0x4452
+#endif
+
 #define      FIRMWARE_VER       "0.8"
 const char*  networks[]       = NETWORK_LIST;
 const char*  network_password = NETWORK_PASSWORD;
@@ -186,7 +195,11 @@ void loop() {
     } else if (pressed && now - pressed > 100) {
         pressed = 0;
     }
+    if (now - lastSend > heartbeat) {
+        needToSend = true;
+    }
     if (needToSend) {
+        lastSend = now;
         String data = build_json();
         power_sum = 0;
         current_sum = 0;
@@ -198,29 +211,36 @@ void loop() {
 }
 
 void callback(const char *topic, const char *msg) {
+    if (0 == strcmp(topic, "heartbeat")) {
+       unsigned int hb = strtoul(msg, NULL, 10);
+       if (hb > 10000) {
+           heartbeat = hb;
+           save_config();
+       }
+    }
 #if HAS_HLW8012
-    if (0 == strcmp(topic, "expectedpower")) {
+    else if (0 == strcmp(topic, "expectedpower")) {
        int pow = atoi(msg);
        if (pow > 0) {
            hlw8012.expectedActivePower(pow);
            save_config();
        }
     }
-    if (0 == strcmp(topic, "expectedvoltage")) {
+    else if (0 == strcmp(topic, "expectedvoltage")) {
        int volt = atoi(msg);
        if (volt > 0) {
            hlw8012.expectedVoltage(volt);
            save_config();
        }
     }
-    if (0 == strcmp(topic, "expectedcurrent")) {
+    else if (0 == strcmp(topic, "expectedcurrent")) {
        double current = atof(msg);
        if (current > 0) {
            hlw8012.expectedCurrent(current);
            save_config();
        }
     }
-    if (0 == strcmp(topic, "resetpower")) {
+    else if (0 == strcmp(topic, "resetpower")) {
        int state = atoi(msg);
        if (state > 0) {
            hlw8012.resetMultipliers();

@@ -15,11 +15,12 @@ def on_connect(client, userdata, flags, rc):
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
     # client.subscribe("esp8266-in/#")
-    # client.subscribe("esp8266-out/#")
+    client.subscribe("esp8266-out/#")
     # client.subscribe("esp8266/#")
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
+    #esp8266-out/mesh_esp8266-6/check=MD5 Passed
     print("%s   %-30s = %s" % (str(datetime.datetime.now()), msg.topic, str(msg.payload)));
 
 def main():
@@ -50,6 +51,7 @@ def main():
     print(payload)
     client.connect(args.broker, args.port, 60)
     b64data = base64.b64encode(data);
+    print("Erasing...")
     client.publish("esp8266-in/ota/" + args.id + "/start", payload)
     time.sleep(10)
     pos = 0
@@ -63,6 +65,8 @@ def main():
             print("Transmitted %d bytes" % (pos))
     print("Completed send")
     client.publish("esp8266-in/ota/" + args.id + "/check", "")
+    time.sleep(5);
+    client.publish("esp8266-in/ota/" + args.id + "/flash", "")
     client.loop_forever()
     client.disconnect()
 main()
