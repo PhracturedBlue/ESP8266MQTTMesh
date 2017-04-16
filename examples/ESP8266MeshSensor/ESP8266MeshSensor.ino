@@ -32,8 +32,8 @@
 #include "capabilities.h"
 #include <ESP8266WiFi.h>
 #include <FS.h>
-#include <OneWire.h>
 #if HAS_DS18B20
+    #include <OneWire.h>
     #include <DallasTemperature.h>
 #endif
 #if HAS_HLW8012
@@ -114,7 +114,7 @@ void setup() {
     Serial.begin(115200);
     delay(5000);
     mesh.setCallback(callback);
-    mesh.setup();
+    mesh.begin();
 #if HAS_DS18B20
     ds18b20.begin();
     ds18b20.getAddress(ds18b20Address, 0);

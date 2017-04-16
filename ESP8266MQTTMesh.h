@@ -17,7 +17,7 @@
 #include <FS.h>
 #include <functional>
 
-#define TOPIC_LEN 32
+#define TOPIC_LEN 64
 
 #define DEBUG_EXTRA         0x10000000
 #define DEBUG_MSG           0x00000001
@@ -90,7 +90,7 @@ public:
                     const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
                     const char *inTopic, const char *outTopic);
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
-    void setup();
+    void begin();
     void loop();
     void publish(const char *subtopic, const char *msg);
     static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);

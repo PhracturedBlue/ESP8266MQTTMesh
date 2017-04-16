@@ -76,7 +76,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_
 void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
     callback = _callback;
 }
-void ESP8266MQTTMesh::setup() {
+void ESP8266MQTTMesh::begin() {
     dbgPrintln(DEBUG_MSG_EXTRA, "Starting Firmware" + String(firmware_id, HEX) + " : " + String(firmware_ver));
 #if HAS_OTA
     dbgPrintln(DEBUG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
@@ -414,6 +414,7 @@ void ESP8266MQTTMesh::assign_subdomain() {
             itoa(i, msg, 10);
             strlcpy(topic, inTopic, sizeof(topic));
             strlcat(topic, "bssid/", sizeof(topic));
+            strlcat(topic, WiFi.softAPmacAddress().c_str(), sizeof(topic));
             dbgPrintln(DEBUG_MQTT, "Publishing " + String(topic) + " == " + String(i));
             mqttClient.publish(topic, msg, true);
             return;
@@ -451,7 +452,7 @@ void ESP8266MQTTMesh::broadcast_message(const char *msg) {
 
 void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
     Dir dir = SPIFFS.openDir("/bssid/");
-    char msg[TOPIC_LEN+32];
+    char msg[TOPIC_LEN];
     char subdomainStr[4];
     while(dir.next()) {
         int subdomain = read_subdomain(dir.fileName().c_str());
