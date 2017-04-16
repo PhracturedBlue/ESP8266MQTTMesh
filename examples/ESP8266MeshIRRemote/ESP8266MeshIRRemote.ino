@@ -1,217 +1,213 @@
 /*
- * Based on IRremoteESP8266: IRServer - demonstrates sending IR codes controlled from a webserver
+ *  Copyright (C) 2016 PhracturedBlue
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *  Based on IRremoteESP8266: IRServer - demonstrates sending IR codes controlled from a webserver
  * 
- * esp8266IR Remote allows Pronto IR codes to be sent via an IR LED connected on GPIO2 via http
- * It is recommended to drive an n-fet transistor connected to a resistor and diode, since the 
- * esp8266 can only supply 12mA on its GPIO pin.
+ *  esp8266IR Remote allows Pronto IR codes to be sent via an IR LED connected on GPIO2 via http
+ *  It is recommended to drive an n-fet transistor connected to a resistor and diode, since the 
+ *  esp8266 can only supply 12mA on its GPIO pin.
  * 
- * Known commands:
- * /ir?pronto=<pronto code>                                           : send specified code one time
- * /ir?repeat=5&pronto=<pronto code>                                  : send specified code 5 times
- * /ir?repeat=5&pronto=<pronto code1>&repeat=3&pronto=<pronto code2>  : send code1 5 times followed by sending code2 3 times
- * /ir?repeat=5&fromfile=<filename>                                   : send pronto code previously saved in 'filename' 5 times
- * /ir?protocol=pronto&data=<pronto code>&savefile=<filename>         : save specified pronto code to 'filename' on esp8266 device
- * 
- * Version 0.1 2015-12-19
+ *  Known commands:
+ *  NOTE: The maximum length of topic + payload is ~1156 bytes
+ *  <topic>/send : code=<pronto code>                                           : send specified code one time
+ *  <topic>/send : repeat=5,code=<pronto code>                                  : send specified code 5 times
+ *  <topic>/send : repeat=5,code=<pronto code1>,repeat=3,pronto=<pronto code2>  : send code1 5 times followed by sending code2 3 times
+ *  <topic>/send : repeat=5,file=<filename>                                     : send pronto code previously saved in 'filename' 5 times
+ *  <topic>/list : ""                                                           : returns a list of all saved files
+ *  <topic>/debug: <1|0>                                                        : enable/disable debugging messages over MQTT
+ *  <topic>/save/<filename> : code=<pronto code>                                : save specified pronto code to 'filename' on esp8266 device
+ *  <topic>/read/<filename> : ""                                                : return contents of 'flename' via MQTT
+ *  
+ *  <topic> will generally be something like: 'esp8266-in/mesh_esp8266-7'
+ *  Version 0.2 2017-04-16
  */
 
+/* See credentials.h.examle for contents of credentials.h */
+#include "credentials.h"
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
+#include <FS.h>
+
+#include <ESP8266MQTTMesh.h>
 #include <IRremoteESP8266.h>
 #include "QueueArray.h"
+#if 0
+    //DO NOT Remove this section!  It is used to help the makefile find libraries
+    #include <PubSubClient.h>
+#endif
 
-#include "FS.h"
+#define      FIRMWARE_ID        0x2222
+#define      FIRMWARE_VER       "0.2"
+
+const char*  networks[]       = NETWORK_LIST;
+const char*  network_password = NETWORK_PASSWORD;
+const char*  mesh_password    = MESH_PASSWORD;
+const char*  base_ssid        = BASE_SSID;
+const char*  mqtt_server      = MQTT_SERVER;
+const int    mqtt_port        = MQTT_PORT;
+const int    mesh_port        = MESH_PORT;
+
+ESP8266MQTTMesh mesh(FIRMWARE_ID, FIRMWARE_VER,
+                     networks, network_password, mesh_password,
+                     base_ssid, mqtt_server, mqtt_port, mesh_port,
+                     IN_TOPIC, OUT_TOPIC);
 
 #define ESP8266_LED 2
-const char* ssid = "audrey";
-const char* password = "Audrey is the best!";
-bool has_fs;
-MDNSResponder mdns;
+
+bool debug = false;
+
 class Cmd {
   public:
-  Cmd(String _c, int _r) {
+  Cmd(String _c, int _r, String _p, String _d = "") {
     code = _c;
     repeat = _r;
+    protocol = _p;
+    description = _d;
   }
   String code;
+  String protocol;
+  String description;
   int repeat;
 };
 QueueArray<struct Cmd *> cmdQueue(10);
 
-void urldecode(char *dst, const char *src);
-
-ESP8266WebServer server(80);
-
 IRsend irsend(ESP8266_LED);
 
-void sendMessage(String message) {
- server.send(200, "text/html",
-             "<html><head> <title>ESP8266 Demo</title></head>\n"
-             "    <body>\n"
-             + message +
-             "\n    </body>\n"
-             "</html>");
-}
-
-void handleRoot() {
-  sendMessage("");
-}
-
 void handleList() {
-  String message = "";
-    Dir dir = SPIFFS.openDir("/");
+  String message = "{ \"Commands\": {";
+    Dir dir = SPIFFS.openDir("/ir/");
+    bool first = true;
     while(dir.next()) {
-      message += dir.fileName()+ "<br>\n";
+      if (! first) {
+          message += ",";
+      }
+      File f = dir.openFile("r");
+      int size = f.size();
+      f.close();
+      message += " \"" + dir.fileName().substring(4) + "\": " + String(size);
+      first = false;
     }
     FSInfo fs_info;
     SPIFFS.info(fs_info);
-    message += "Used space: " + String(fs_info.usedBytes) + " Free: " + String(fs_info.totalBytes - fs_info.usedBytes) + "<br>\n";
-
-    sendMessage(message);
+    message += " }, \"Free\": " + String(fs_info.totalBytes - fs_info.usedBytes) + "}";
+    mesh.publish("list", message.c_str());
 }
 
-
-void handleIr(){
-  unsigned long repeat = 0;
-  String message = "";
-  String data = "";
-  String protocol = "pronto";
-  bool debug = false;
-  for (uint8_t i=0; i<server.args(); i++){
-    if (server.argName(i) == "debug") {
-      debug = true;
-    }
-    if (server.argName(i) == "repeat") {
-      repeat = server.arg(i).toInt();
-    }
-    else if(server.argName(i) == "pronto") 
-    {
-      String code = server.arg(i);
-      char * const decoded = new char[code.length()];
-      urldecode(decoded, code.c_str());
-      if (debug) {
-          message += "Repeat: " + String(repeat) + "<br>\n";
-          message += "pronto: " + code + "<br>\n";
-          Serial.println(decoded);
-      }
-      cmdQueue.push(new Cmd(String(decoded), repeat));
-      delete [] decoded;
-    }
-    else if(server.argName(i) == "fromfile")
-    {
-      String filename = server.arg(i);
-      File f = SPIFFS.open("/" + filename, "r");
-      if (! f) {
-        Serial.println("Failed to read file: " + filename);
-      } else {
-        protocol = f.readStringUntil('\n');
-        String data1 = f.readStringUntil('\n');
-        f.close();
-        if (debug) {
-            Serial.println("Read file: " + filename + " protocol: " + protocol);
-            Serial.println(data1.c_str());
-            message += "Repeat: " + String(repeat) + "<br>\n";
-            message += protocol + ": " + data1 + "<br>\n";
+Cmd *parse_code(const char *msg, bool queue = false) {
+    String code = "";
+    String protocol = "pronto";
+    int repeat = 0;
+    bool debug = false;
+    bool seen_repeat = false;
+    while (msg) {
+        char kv[1024];
+        char key[16];
+        const char *value;
+        ESP8266MQTTMesh::keyValue(msg, ',', kv, sizeof(kv), &msg);
+        if (! ESP8266MQTTMesh::keyValue(kv, '=', key, sizeof(key), &value)) {
+            continue;
+        };
+        if (0 == strcmp(key, "repeat")) {
+            repeat = atoi(value);
+            seen_repeat = true;
         }
-        cmdQueue.push(new Cmd(String(data1), repeat));
-      }
-    }
-    else if(server.argName(i) == "data") 
-    {
-      data = server.arg(i);
-    }
-    else if(server.argName(i) == "protocol") 
-    {
-      protocol = server.arg(i);
-    }
-    else if(server.argName(i) == "savefile" && data != "")
-    {
-      String filename = server.arg(i);
-      File f = SPIFFS.open("/" + filename, "w");
-      if (! f) {
-        Serial.println("Failed to create file: " + filename);
-      } else {  
-        f.print(protocol + "\n");
-        f.print(data + "\n");
-        f.close();
-        if (debug) {
-            Serial.println("Saved: " + filename);
+        else if (0 == strcmp(key, "protocol")) {
+            protocol = value;
         }
-        data = "";
-      }
+        else if(0 == strcmp(key, "code")) {
+            code = value;
+            if (queue) {
+                cmdQueue.push(new Cmd(code, repeat, protocol, "Code len: " + String(code.length())));
+            }
+        }
+        else if(0 == strcmp(key, "file")) {
+            File f = SPIFFS.open("/ir/" + String(value), "r");
+            if (! f) {
+                Serial.println("Failed to read file: " + String(value));
+                continue;
+            }
+            protocol = f.readStringUntil('\n');
+            code = f.readStringUntil('\n');
+            String repeat_str = f.readStringUntil('\n');
+            if (repeat_str != "" && !seen_repeat) {
+                repeat = repeat_str.toInt();
+            }
+            if (queue) {
+                cmdQueue.push(new Cmd(code, repeat, protocol, "File: " + String(value)));
+            }
+            f.close();
+        }
     }
-  }
-  sendMessage(message);
+    if (queue) {
+        return NULL;
+    }
+    Cmd *cmd = new Cmd(code, repeat, protocol);
+    return cmd;
 }
 
-void handleNotFound(){
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET)?"GET":"POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i=0; i<server.args(); i++){
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
-  server.send(404, "text/plain", message);
-}
-
-void urldecode(char *dst, const char *src)
+void callback(const char *topic, const char *msg)
 {
-  char a, b,c;
-  if (dst==NULL) return;
-  while (*src) {
-    if ((*src == '%') &&
-      ((a = src[1]) && (b = src[2])) &&
-      (isxdigit(a) && isxdigit(b))) {
-      if (a >= 'a')
-        a -= 'a'-'A';
-      if (a >= 'A')
-        a -= ('A' - 10);
-      else
-        a -= '0';
-      if (b >= 'a')
-        b -= 'a'-'A';
-      if (b >= 'A')
-        b -= ('A' - 10);
-      else
-        b -= '0';
-      *dst++ = 16*a+b;
-      src+=3;
-    } 
-    else {
-        c = *src++;
-        if(c=='+')c=' ';
-      *dst++ = c;
+    char *endStr;
+    if (0 == strcmp(topic, "list")) {
+        handleList();
     }
-  }
-  *dst++ = '\0';
+    if (0 == strcmp(topic, "debug")) {
+        debug = atoi(msg);
+    }
+    else if (0 == strcmp(topic, "send")) {
+        parse_code(msg, true);
+    }
+    else if (strstr(topic, "read/") == topic) {
+        const char *filename = topic + 5;
+        File f = SPIFFS.open("/ir/" + String(filename), "r");
+        if (! f) {
+            Serial.println("Failed to read file: " + String(filename));
+            mesh.publish(topic, "{ \"Failed\": 1 }");
+            return;
+        }
+        String json = "{";
+        json += " \"protocol\": \"" + f.readStringUntil('\n') + "\"";
+        json += " \"code\": \"" + f.readStringUntil('\n') + "\"";
+        json += " \"repeat\": \"" + f.readStringUntil('\n') + "\"";
+        json += " }";
+        mesh.publish(topic, json.c_str());
+    }
+    else if (strstr(topic, "save/") == topic) {
+        const char *filename = topic + 5;
+        Cmd *cmd = parse_code(msg);
+        File f = SPIFFS.open("/ir/" + String(filename), "w");
+        if (! f) {
+            Serial.println("Failed to create file: " + String(filename));
+            mesh.publish(topic, "{ \"Failed\": 1 }");
+        } else {  
+            f.print(cmd->protocol + "\n");
+            f.print(cmd->code + "\n");
+            f.print(String(cmd->repeat) + "\n");
+            f.close();
+        }
+        delete cmd;
+    }
 }
-
 void setup(void){
   irsend.begin();
   
   Serial.begin(115200);
-  WiFi.begin(ssid, password);
+  mesh.setCallback(callback);
+  mesh.begin();
   Serial.println("");
-  has_fs = false;
-  if (! SPIFFS.begin()) {
-    SPIFFS.format();
-    Serial.println("Formatting FS");
-    if (! SPIFFS.begin()) {
-      Serial.println("Failed to format FS");
-    } else {
-      has_fs = true;
-    }
-  } else {
-    has_fs = true;
-  }
-  if (has_fs) {
+  if (1) {
     FSInfo fs_info;
     SPIFFS.info(fs_info);
     Serial.print("FS Used: ");
@@ -220,41 +216,21 @@ void setup(void){
     Serial.print(fs_info.totalBytes - fs_info.usedBytes);
     Serial.print(" Blocksize: ");
     Serial.println(fs_info.blockSize);
-    Dir dir = SPIFFS.openDir("/");
+    Dir dir = SPIFFS.openDir("/ir/");
     while(dir.next()) {
       Serial.println("File: " + dir.fileName());
     }
   }
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  
-  if (mdns.begin("esp8266", WiFi.localIP())) {
-    Serial.println("MDNS responder started");
-  }
-  
-  server.on("/", handleRoot);
-  server.on("/ir", handleIr);
-  server.on("/list", handleList);
- 
-  server.onNotFound(handleNotFound);
-  
-  server.begin();
-  Serial.println("HTTP server started");
 }
  
 void loop(void){
-  server.handleClient();
+  mesh.loop();
   if (! cmdQueue.isEmpty()) {
     Cmd *nextCmd = cmdQueue.peek();
     Serial.println("Sendng code: Repeat=" + String(nextCmd->repeat) + " queue size= " + cmdQueue.count());
+    if (debug) {
+        mesh.publish("tx", String("Queue Len: " + String(cmdQueue.count()) + " Repeat: " + String(nextCmd->repeat) + " Desc: " + nextCmd->description).c_str());
+    }
     while (1) {
       irsend.sendPronto(nextCmd->code.c_str(), nextCmd->repeat ? true : false, true);
       if (nextCmd->repeat >= -1) {
