@@ -89,13 +89,10 @@ void ESP8266MQTTMesh::begin() {
         die();
       }
     }
-Serial.println("1");
     Dir dir = SPIFFS.openDir("/bssid/");
-Serial.println("2");
     while(dir.next()) {
       Serial.println(" ==> '" + dir.fileName() + "'");
     }
-Serial.println("3");
     WiFi.mode(WIFI_AP_STA);
     WiFi.disconnect();
   
@@ -106,17 +103,41 @@ Serial.println("3");
 }
 
 void ESP8266MQTTMesh::loop() {
-    if (!connected()) {
+    if (!wifiConnected() && ! connecting) {
        WiFi.softAPdisconnect();
        if (millis() - lastReconnect < 5000) {
            return;
        }
+       scan();
        connect();
-       lastReconnect = millis();
-       if (! connected()) {
-           dbgPrintln(DEBUG_MSG, "WiFi Connection Failed");
-           return;
-       }
+    }
+    if (connecting) {
+       if (wifiConnected()) {
+            connecting = false;
+            dbgPrintln(DEBUG_WIFI, "WiFi connected");
+            dbgPrintln(DEBUG_WIFI, "IP address: ");
+            dbgPrintln(DEBUG_WIFI, WiFi.localIP());
+            if (match_bssid(WiFi.softAPmacAddress().c_str())) {
+                setup_AP();
+            }
+        } else {
+            if (millis() - lastStatus > 500) {
+                dbgPrintln(DEBUG_WIFI, WiFi.status());
+                lastStatus = millis();
+            }
+            if (millis() - lastReconnect > 60000) {
+                if (! wifiConnected()) {
+                    dbgPrintln(DEBUG_MSG, "WiFi Connection Failed");
+                }
+                lastReconnect = millis();
+                WiFi.disconnect();
+                ap_idx++;
+                connect();
+            }
+        }
+    }
+    if (! wifiConnected()) {
+        return;
     }
     if (! meshConnect) {
         // We will connect directly to the MQTT broker
@@ -150,6 +171,10 @@ void ESP8266MQTTMesh::loop() {
     }
 }
 
+bool ESP8266MQTTMesh::connected() {
+    return wifiConnected() && (meshConnect || mqttClient.connected());
+}
+
 bool ESP8266MQTTMesh::match_bssid(const char *bssid) {
     char filename[32];
     dbgPrintln(DEBUG_WIFI, "Trying to match known BSSIDs for " + String(bssid));
@@ -158,21 +183,25 @@ bool ESP8266MQTTMesh::match_bssid(const char *bssid) {
     return SPIFFS.exists(filename);
 }
 
-void ESP8266MQTTMesh::connect() {
+void ESP8266MQTTMesh::scan() {
+    for(int i = 0; i < sizeof(ap) / sizeof(ap_t); i++) {
+        ap[i].rssi = -99999;
+        ap[i].ssid_idx = -2;
+    }
+    ap_idx = 0;
     dbgPrintln(DEBUG_WIFI, "Scanning for networks");
     int numberOfNetworksFound = WiFi.scanNetworks(false,true);
     dbgPrintln(DEBUG_WIFI, "Found: " + String(numberOfNetworksFound));
-    int best_match = -1;
-    long maxRSSI = LONG_MIN;
-
+    int ssid_idx;
     for(int i = 0; i < numberOfNetworksFound; i++) {
         bool found = false;
         char ssid[32];
+        int network_idx = -1;
         strlcpy(ssid, WiFi.SSID(i).c_str(), sizeof(ssid));
         dbgPrintln(DEBUG_WIFI, "Found SSID: '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(i) + "'");
         if (ssid[0] != 0) {
-            for(int j = 0; networks[j] != NULL && networks[j][0] != 0; j++) {
-                if(strcmp(ssid, networks[j]) == 0) {
+            for(network_idx = 0; networks[network_idx] != NULL && networks[network_idx][0] != 0; network_idx++) {
+                if(strcmp(ssid, networks[network_idx]) == 0) {
                     dbgPrintln(DEBUG_WIFI, "Matched");
                     found = true;
                     break;
@@ -200,48 +229,60 @@ void ESP8266MQTTMesh::connect() {
             }
         }
         dbgPrintln(DEBUG_WIFI, "RSSI: " + String(WiFi.RSSI(i)));
-        if (WiFi.RSSI(i) > maxRSSI) {
-            maxRSSI = WiFi.RSSI(i);
-            best_match = i;
-        }
-    }
-    if (best_match != -1) {
-        char ssid[64];
-        if (WiFi.SSID(best_match) == "") {
-            char subdomain_c[8];
-            char filename[32];
-            strlcpy(filename, "/bssid/", sizeof(filename));
-            strlcat(filename, WiFi.BSSIDstr(best_match).c_str(), sizeof(filename));
-            int subdomain = read_subdomain(filename);
-            if (subdomain == -1) {
-                return;
-            }
-            itoa(subdomain, subdomain_c, 10);
-            strlcpy(ssid, base_ssid, sizeof(ssid));
-            strlcat(ssid, subdomain_c, sizeof(ssid));
-            meshConnect = true;
-        } else {
-            strlcpy(ssid, WiFi.SSID(best_match).c_str(), sizeof(ssid));
-            meshConnect = false;
-        }
-        dbgPrintln(DEBUG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(best_match) + "'");
-        const char *password = meshConnect ? mesh_password : network_password;
-        //WiFi.begin(ssid.c_str(), password.c_str(), 0, WiFi.BSSID(best_match), true);
-        WiFi.begin(ssid, password);
-        for (int i = 0; i < 120 && ! connected(); i++) {
-            delay(500);
-            dbgPrintln(DEBUG_WIFI, WiFi.status());
-            //Serial.print(".");
-        }
-        if (connected()) {
-            dbgPrintln(DEBUG_WIFI, "WiFi connected");
-            dbgPrintln(DEBUG_WIFI, "IP address: ");
-            dbgPrintln(DEBUG_WIFI, WiFi.localIP());
-            if (match_bssid(WiFi.softAPmacAddress().c_str())) {
-                setup_AP();
+        int rssi = WiFi.RSSI(i);
+        //sort by RSSI
+        for(int j = 0; j < sizeof(ap) / sizeof(ap_t); j++) {
+            if(ap[j].ssid_idx < -1 ||
+               (network_idx >= 0 &&
+                  (ap[j].ssid_idx == -1 || rssi > ap[j].rssi)) ||
+               (network_idx == -1 && ap[j].ssid_idx == -1 && rssi > ap[j].rssi))
+            {
+                for(int k = sizeof(ap) / sizeof(ap_t) -1; k > j; k--) {
+                    ap[k] = ap[k-1];
+                }
+                ap[j].rssi = rssi;
+                ap[j].ssid_idx = network_idx;
+                strlcpy(ap[j].bssid, WiFi.BSSIDstr(i).c_str(), sizeof(ap[j].bssid));
+                break;
             }
         }
     }
+}
+
+void ESP8266MQTTMesh::connect() {
+    connecting = false;
+    lastReconnect = millis();
+    if (ap_idx >= sizeof(ap)/sizeof(ap_t) ||  ap[ap_idx].ssid_idx == -2) {
+        return;
+    }
+    for (int i = 0; i < sizeof(ap)/sizeof(ap_t); i++) {
+        dbgPrintln(DEBUG_WIFI, String(i) + String(i == ap_idx ? " * " : "   ") + String(ap[i].bssid) + " " + String(ap[i].rssi));
+    }
+    char ssid[64];
+    if (ap[ap_idx].ssid_idx == -1) {
+        //This is a mesh node
+        char subdomain_c[8];
+        char filename[32];
+        strlcpy(filename, "/bssid/", sizeof(filename));
+        strlcat(filename, ap[ap_idx].bssid, sizeof(filename));
+        int subdomain = read_subdomain(filename);
+        if (subdomain == -1) {
+            return;
+        }
+        itoa(subdomain, subdomain_c, 10);
+        strlcpy(ssid, base_ssid, sizeof(ssid));
+        strlcat(ssid, subdomain_c, sizeof(ssid));
+        meshConnect = true;
+    } else {
+        strlcpy(ssid, networks[ap[ap_idx].ssid_idx], sizeof(ssid));
+        meshConnect = false;
+    }
+    dbgPrintln(DEBUG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + String(ap[ap_idx].bssid) + "'");
+    const char *password = meshConnect ? mesh_password : network_password;
+    //WiFi.begin(ssid.c_str(), password.c_str(), 0, WiFi.BSSID(best_match), true);
+    WiFi.begin(ssid, password);
+    connecting = true;
+    lastStatus = lastReconnect;
 }
 
 void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {

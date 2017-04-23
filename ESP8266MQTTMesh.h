@@ -36,6 +36,12 @@ typedef struct {
     byte         md5[16];
 } ota_info_t;
 
+typedef struct {
+    char bssid[19];
+    int  ssid_idx;
+    int  rssi;
+} ap_t;
+
 class ESP8266MQTTMesh {
 private:
     unsigned int firmware_id;
@@ -56,6 +62,8 @@ private:
     WiFiClient espClient;
     WiFiServer espServer;
     PubSubClient mqttClient;
+    ap_t ap[5];
+    int ap_idx = 0;
     char mySSID[16];
     char buffer[MQTT_MAX_PACKET_SIZE];
     long lastMsg = 0;
@@ -63,13 +71,16 @@ private:
     int value = 0;
     bool meshConnect = false;
     unsigned long lastReconnect = 0;
+    unsigned long lastStatus = 0;
+    bool connecting = 0;
     bool AP_ready = false;
     std::function<void(const char *topic, const char *msg)> callback;
 
-    bool connected() { return (WiFi.status() == WL_CONNECTED); }
+    bool wifiConnected() { return (WiFi.status() == WL_CONNECTED); }
     void die() { while(1) {} }
 
     bool match_bssid(const char *bssid);
+    void scan();
     void connect();
     void connect_mqtt();
     void setup_AP();
@@ -93,6 +104,7 @@ public:
     void begin();
     void loop();
     void publish(const char *subtopic, const char *msg);
+    bool connected();
     static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);
 };
 #endif //_ESP8266MQTTMESH_H_

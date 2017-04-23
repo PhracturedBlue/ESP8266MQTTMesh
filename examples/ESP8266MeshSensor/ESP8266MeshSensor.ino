@@ -75,7 +75,7 @@ DeviceAddress ds18b20Address;
 #define HLW8012_CURRENT_R           0.001
 #define HLW8012_VOLTAGE_R_UP        ( 5 * 470000 ) // Real: 2280k
 #define HLW8012_VOLTAGE_R_DOWN      ( 1000 ) // Real 1.009k
-#define HLW8012_UPDATE_INTERVAL     5000
+#define HLW8012_UPDATE_INTERVAL     2000
 #define HLW8012_MIN_CURRENT         0.05
 #define HLW8012_MIN_POWER           10
 HLW8012 hlw8012;
@@ -84,6 +84,7 @@ unsigned int voltage_sum;
 double current_sum;
 double energy; //in Watt-Seconds
 unsigned long power_sample_count = 0;
+bool hlw8012Enabled = false;
 
 void hlw8012_cf1_interrupt();
 void hlw8012_cf_interrupt();
@@ -125,7 +126,6 @@ Serial.println("HLW8012 start");
 #if HAS_HLW8012
     hlw8012.begin(HLW8012_CF, HLW8012_CF1, HLW8012_SEL, HIGH, true);
     hlw8012.setResistors(HLW8012_CURRENT_R, HLW8012_VOLTAGE_R_UP, HLW8012_VOLTAGE_R_DOWN);
-    hlw8012_enable_interrupts(true);
 #endif
 Serial.println("HLW8012 end");
     //mesh.setup will initialize the filesystem
@@ -152,6 +152,11 @@ void loop() {
 #endif
 
 #if HAS_HLW8012
+    if (! hlw8012Enabled && mesh.connected()) {
+        hlw8012_enable_interrupts(true);
+    } else if (hlw8012Enabled && ! mesh.connected()) {
+        hlw8012_enable_interrupts(false);
+    }
     static unsigned long last_hlw8012_update = 0;
     if (now - last_hlw8012_update > HLW8012_UPDATE_INTERVAL) {
         static unsigned int power[3] = {0};
@@ -198,13 +203,18 @@ void loop() {
     if (now - lastSend > heartbeat) {
         needToSend = true;
     }
+    if (! mesh.connected()) {
+        return;
+    }
     if (needToSend) {
         lastSend = now;
         String data = build_json();
+#if HAS_HLW8012
         power_sum = 0;
         current_sum = 0;
         voltage_sum = 0;
         power_sample_count = 0;
+#endif
         mesh.publish("status", data.c_str());
         needToSend = false;
     }   
@@ -257,9 +267,10 @@ String build_json() {
         msg += ", \"temp\":" + String(temperature, 2);
 #endif
 #if HAS_HLW8012
-        double power   = (double)power_sum / power_sample_count;
-        double current = (double)current_sum / power_sample_count;
-        double voltage = (double)voltage_sum / power_sample_count;
+        double count = power_sample_count ? power_sample_count : 1;
+        double power   = (double)power_sum / count;
+        double current = (double)current_sum / count;
+        double voltage = (double)voltage_sum / count;
         double apparent= voltage * current;
         double pfactor = (apparent > 0) ? 100 * power / apparent : 100;
         if (pfactor > 100) {
@@ -350,9 +361,11 @@ void hlw8012_enable_interrupts(bool enabled) {
     if (enabled) {
         attachInterrupt(HLW8012_CF1, hlw8012_cf1_interrupt, CHANGE);
         attachInterrupt(HLW8012_CF,  hlw8012_cf_interrupt,  CHANGE);
+        hlw8012Enabled = true;
     } else {
         detachInterrupt(HLW8012_CF1);
         detachInterrupt(HLW8012_CF);
+        hlw8012Enabled = false;
     }
 }
 unsigned int hlw8012_getActivePower() {
