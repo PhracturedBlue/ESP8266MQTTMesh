@@ -1,4 +1,4 @@
-# WSP8266MeshIRRemote
+# ESP8266MeshIRRemote
 
 This is an example of an IR Blaster controlled via MQTT commands
 
