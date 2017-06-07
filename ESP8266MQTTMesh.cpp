@@ -52,15 +52,25 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_
         mesh_port(mesh_port),
         inTopic(inTopic),
         outTopic(outTopic),
-        espServer(mqtt_port),
+        espServer(mesh_port),
         mqttClient(espClient)
 {
-    if (strlen(inTopic) > 16) {
+    int len = strlen(inTopic);
+    if (len > 16) {
         dbgPrintln(DEBUG_MSG, "Max inTopicLen == 16");
         die();
     }
-    if (strlen(outTopic) > 16) {
+    if (inTopic[len-1] != '/') {
+        dbgPrintln(DEBUG_MSG, "inTopic must end with '/'");
+        die();
+    }
+    len = strlen(outTopic);
+    if (len > 16) {
         dbgPrintln(DEBUG_MSG, "Max outTopicLen == 16");
+        die();
+    }
+    if (outTopic[len-1] != '/') {
+        dbgPrintln(DEBUG_MSG, "outTopic must end with '/'");
         die();
     }
     mySSID[0] = 0;
@@ -516,6 +526,7 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
         if (client.available()) {
             buffer[client.readBytesUntil('\n', buffer, sizeof(buffer)-1)] = 0;
             bool isLocal = (client.localIP() == WiFi.localIP() ? true : false);
+            IPAddress ip(client.remoteIP());
             dbgPrintln(DEBUG_MQTT, "Received: msg from " + client.remoteIP().toString() + " on " + (isLocal ? "STA" : "AP"));
             dbgPrintln(DEBUG_MQTT_EXTRA, "1: " + client.localIP().toString() + " 2: " + WiFi.localIP().toString() + " 3: " + WiFi.softAPIP().toString());
             dbgPrint(DEBUG_MQTT_EXTRA, "--> '");
@@ -534,7 +545,7 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
                 if (strstr(topic,"/mesh_cmd")  == topic + strlen(topic) - 9) {
                     // We will handle this packet locally
                     if (0 == strcmp(msg, "request_bssid")) {
-                        send_bssids(client.localIP());
+                        send_bssids(ip);
                     }
                 } else {
                     if (meshConnect) {
@@ -549,7 +560,7 @@ void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
 }
 
 bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int keylen, const char **value) {
-  int maxIndex = strlen(data-1);
+  int maxIndex = strlen(data)-1;
   int i;
   for(i=0; i<=maxIndex && i <keylen-1; i++) {
       key[i] = data[i];
