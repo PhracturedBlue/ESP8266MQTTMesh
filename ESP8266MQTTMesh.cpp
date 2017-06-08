@@ -25,6 +25,10 @@ extern "C" {
   extern uint32_t _SPIFFS_start;
 }
 
+enum {
+    NETWORK_LAST_INDEX = -2,
+    NETWORK_MESH_NODE  = -1,
+};
 
 //#define DEBUG_LEVEL (DEBUG_WIFI | DEBUG_MQTT | DEBUG_OTA)
 #define DEBUG_LEVEL DEBUG_ALL
@@ -206,7 +210,7 @@ void ESP8266MQTTMesh::scan() {
     for(int i = 0; i < numberOfNetworksFound; i++) {
         bool found = false;
         char ssid[32];
-        int network_idx = -1;
+        int network_idx = NETWORK_MESH_NODE;
         strlcpy(ssid, WiFi.SSID(i).c_str(), sizeof(ssid));
         dbgPrintln(DEBUG_WIFI, "Found SSID: '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(i) + "'");
         if (ssid[0] != 0) {
@@ -242,10 +246,10 @@ void ESP8266MQTTMesh::scan() {
         int rssi = WiFi.RSSI(i);
         //sort by RSSI
         for(int j = 0; j < sizeof(ap) / sizeof(ap_t); j++) {
-            if(ap[j].ssid_idx < -1 ||
+            if(ap[j].ssid_idx == NETWORK_LAST_INDEX ||
                (network_idx >= 0 &&
-                  (ap[j].ssid_idx == -1 || rssi > ap[j].rssi)) ||
-               (network_idx == -1 && ap[j].ssid_idx == -1 && rssi > ap[j].rssi))
+                  (ap[j].ssid_idx == NETWORK_MESH_NODE || rssi > ap[j].rssi)) ||
+               (network_idx == NETWORK_MESH_NODE && ap[j].ssid_idx == NETWORK_MESH_NODE && rssi > ap[j].rssi))
             {
                 for(int k = sizeof(ap) / sizeof(ap_t) -1; k > j; k--) {
                     ap[k] = ap[k-1];
@@ -262,14 +266,14 @@ void ESP8266MQTTMesh::scan() {
 void ESP8266MQTTMesh::connect() {
     connecting = false;
     lastReconnect = millis();
-    if (ap_idx >= sizeof(ap)/sizeof(ap_t) ||  ap[ap_idx].ssid_idx == -2) {
+    if (ap_idx >= sizeof(ap)/sizeof(ap_t) ||  ap[ap_idx].ssid_idx == NETWORK_LAST_INDEX) {
         return;
     }
     for (int i = 0; i < sizeof(ap)/sizeof(ap_t); i++) {
         dbgPrintln(DEBUG_WIFI, String(i) + String(i == ap_idx ? " * " : "   ") + String(ap[i].bssid) + " " + String(ap[i].rssi));
     }
     char ssid[64];
-    if (ap[ap_idx].ssid_idx == -1) {
+    if (ap[ap_idx].ssid_idx == NETWORK_MESH_NODE) {
         //This is a mesh node
         char subdomain_c[8];
         char filename[32];
