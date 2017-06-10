@@ -57,7 +57,9 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_
         inTopic(inTopic),
         outTopic(outTopic),
         espServer(mesh_port),
-        mqttClient(espClient)
+        mqttClient(espMQTTClient),
+        ringBuf((MQTT_MAX_PACKET_SIZE + 3)*10)
+
 {
     int len = strlen(inTopic);
     if (len > 16) {
@@ -91,7 +93,7 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
     callback = _callback;
 }
 void ESP8266MQTTMesh::begin() {
-    dbgPrintln(DEBUG_MSG_EXTRA, "Starting Firmware" + String(firmware_id, HEX) + " : " + String(firmware_ver));
+    dbgPrintln(DEBUG_MSG_EXTRA, "Starting Firmware " + String(firmware_id, HEX) + " : " + String(firmware_ver));
 #if HAS_OTA
     dbgPrintln(DEBUG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
 #endif
@@ -107,8 +109,8 @@ void ESP8266MQTTMesh::begin() {
     while(dir.next()) {
       Serial.println(" ==> '" + dir.fileName() + "'");
     }
-    WiFi.mode(WIFI_AP_STA);
     WiFi.disconnect();
+    WiFi.mode(WIFI_AP_STA);
   
     mqttClient.setServer(mqtt_server, mqtt_port);
     mqttClient.setCallback([this] (char* topic, byte* payload, unsigned int length) { this->mqtt_callback(topic, payload, length); });
@@ -118,7 +120,8 @@ void ESP8266MQTTMesh::begin() {
 
 void ESP8266MQTTMesh::loop() {
     if (!wifiConnected() && ! connecting) {
-       WiFi.softAPdisconnect();
+       WiFi.softAPdisconnect(true);
+       WiFi.disconnect();
        if (millis() - lastReconnect < 5000) {
            return;
        }
@@ -131,6 +134,19 @@ void ESP8266MQTTMesh::loop() {
             dbgPrintln(DEBUG_WIFI, "WiFi connected");
             dbgPrintln(DEBUG_WIFI, "IP address: ");
             dbgPrintln(DEBUG_WIFI, WiFi.localIP());
+            if (meshConnect) {
+                if (espClient[0].connect(WiFi.gatewayIP(), mesh_port)) {
+                    espClient[0].setNoDelay(true);
+                } else {
+                    // AP rejected our connetcion...Try another AP
+                    dbgPrintln(DEBUG_MSG, "AP Rejected connection");
+                    lastReconnect = millis();
+                    WiFi.disconnect();
+                    ap_idx++;
+                    connect();
+                    return;
+                }
+            }
             if (match_bssid(WiFi.softAPmacAddress().c_str())) {
                 setup_AP();
             }
@@ -179,10 +195,79 @@ void ESP8266MQTTMesh::loop() {
             }
         }
     }
-    WiFiClient client = espServer.available();
-    if (client) {
-        handle_client_connection(client);
+    while (espServer.hasClient())  {
+        int i;
+        uint8 mac[6];
+        WiFiClient c = espServer.available();
+        getMAC(c.remoteIP(), mac);
+        for (i = 1; i <= ESP8266_NUM_CLIENTS; i++) {
+            bool unused = false;
+            if(! espClient[i] || ! espClient[i].connected()
+               || memcmp(espMAC[i], mac, 6) == 0
+               || ! isAPConnected(espMAC[i]))
+            {
+                if(espClient[i])
+                    espClient[i].stop();
+                espClient[i] = c;
+                espClient[i].setNoDelay(true);
+                memcpy(espMAC[i], mac, 6);
+                dbgPrintln(DEBUG_WIFI,"Assigning IP " + espClient[i].localIP().toString() + " to idx: " + String(i));
+                break;
+            }            
+        }
+        if (i == ESP8266_NUM_CLIENTS + 1) {
+            c.flush();
+            c.stop();
+        }
     }
+    send_messages();
+    for (int i = meshConnect ? 0 : 1; i <= ESP8266_NUM_CLIENTS; i++) {
+        if (espClient[i] && espClient[i].connected()) {
+            int strIdx = strlen(readData[i]);
+            while (espClient[i].available()) {
+                unsigned char c = espClient[i].read();
+                if (c == '\r')
+                    continue;
+                if (c == '\n') {
+                    handle_client_data(i);
+                    strIdx = 0;
+                    readData[i][0] = 0;
+                    continue;
+                }
+                if (strIdx == sizeof(readData[i])) {
+                    dbgPrintln(DEBUG_MQTT, "Ran out of space in buffer " + String(i) + " " + String(readData[i]));
+                    strIdx = 0;
+                    readData[i][0] = 0;
+                    continue;
+                }
+                readData[i][strIdx++] = c;
+                readData[i][strIdx] = 0;
+            }
+        }
+    }
+}
+
+bool ESP8266MQTTMesh::isAPConnected(uint8 *mac) {
+    struct station_info *station_list = wifi_softap_get_station_info();
+    while (station_list != NULL) {
+        if(memcmp(mac, station_list->bssid, 6) == 0) {
+            return true;
+        }
+        station_list = station_list->next;
+    }
+    return false;
+}
+
+void ESP8266MQTTMesh::getMAC(IPAddress ip, uint8 *mac) {
+    struct station_info *station_list = wifi_softap_get_station_info();
+    while (station_list != NULL) {
+        if ((&station_list->ip)->addr == ip) {
+            memcpy(mac, station_list->bssid, 6);
+            return;
+        }
+        station_list = station_list->next;
+    }
+    memset(mac, 0, 6);
 }
 
 bool ESP8266MQTTMesh::connected() {
@@ -353,7 +438,7 @@ void ESP8266MQTTMesh::mqtt_callback(const char* topic, const byte* payload, unsi
   buffer[len++] = '=';
   strlcpy(buffer + len, (char *)payload, sizeof(buffer)-len > length ? length+1 : sizeof(buffer)-len);
   dbgPrintln(DEBUG_MQTT, buffer);
-  broadcast_message(buffer);
+  queue_message(-1, buffer);
   parse_message(topic, buffer+len);
 }
 
@@ -394,7 +479,7 @@ void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg) {
     dbgPrintln(DEBUG_MQTT_EXTRA, "Sending: " + String(topic) + "=" + String(msg));
     if (meshConnect) {
         // Send message through mesh network
-        send_message(WiFi.gatewayIP(), topic, msg);
+        queue_message(0, topic, msg);
     } else {
         mqttClient.publish(topic, msg);
     }
@@ -477,35 +562,76 @@ void ESP8266MQTTMesh::assign_subdomain() {
     }
     die();
 }
-void ESP8266MQTTMesh::send_message(IPAddress ip, const char *topicOrMsg, const char *msg) {
-    WiFiClient client;
-    if (client.connect(ip, mesh_port)) {
-        client.print(topicOrMsg);
-        if (msg) {
-            client.print("=");
-            client.print(msg);
+bool ESP8266MQTTMesh::queue_message(int index, const char *topicOrMsg, const char *msg) {
+    int topicLen = strlen(topicOrMsg);
+    int msgLen = 0;
+    int len = topicLen;
+    if (msg) {
+        msgLen = strlen(msg);
+        len += 1 + msgLen;
+    }
+    int available = ringBuf.room();
+    if (len + 3 > available) {
+        dbgPrintln(DEBUG_MQTT, "Not enough bytes: " + String(len+3) + " > " + String(available) + " to send: '" + String(topicOrMsg) + (msg ? String("=" + String(msg)) : "") + "'");
+        return false;
+        
+    }
+    ringBuf.write((char)index);
+    ringBuf.write((char)(len >> 8));
+    ringBuf.write((char)(len  & 0xff));
+    ringBuf.write(topicOrMsg, topicLen);
+    if (msg) {
+        ringBuf.write('=');
+        ringBuf.write(msg, msgLen);
+    }
+    dbgPrintln(DEBUG_MQTT, "Queued '" + String(topicOrMsg) + (msg ? String("=" + String(msg)) : "") + "' to " + (index == -1 ? "Broadcast" : espClient[index].remoteIP().toString()));
+    return true;
+}
+
+void ESP8266MQTTMesh::send_messages() {
+    if (ringBuf.empty())
+        return;
+    char tmp[3];
+    ringBuf.peek(tmp, 3);
+    int index = (signed char)tmp[0];
+    int len = tmp[1] * 256 + tmp[2];
+    int pos = 0;
+    int start_Index = (index == -1) ? 1 : index;
+    if (send_InProgress) {
+        if (index == -1) {
+            start_Index = send_CurrentIdx;
         }
-        client.print("\n");
-        client.flush();
-        client.stop();
-        dbgPrintln(DEBUG_MQTT, "Sent '" + String(topicOrMsg) + (msg ? String("=" + String(msg)) : "") + "' to " + ip.toString());
-    } else {
-        dbgPrintln(DEBUG_MQTT, "Failed to send message '" + String(msg) + "' to " + ip.toString());
+        pos = send_Pos;
     }
+    int last_Index = (index == -1) ? ESP8266_NUM_CLIENTS : index;
+    ringBuf.peek(buffer, 3 + len);
+    buffer[len+3] = '\n';
+    buffer[len+4] = 0;
+    len++;
+    for(int i = start_Index; i <= last_Index; i++, pos = 0) {
+        if(! espClient[i] || ! espClient[i].connected()) {
+            continue;
+        }
+        int avail = espClient[i].availableForWrite();
+        int size  = len < avail ? len : avail;
+        dbgPrintln(DEBUG_MQTT, String(index == -1 ? "Broadcasting" : "Sending") + " to " + espClient[i].remoteIP().toString() + "@" + String(i));
+        int sent = espClient[i].write(buffer+3 + pos, len - pos);
+        if (sent == 0) {
+            espClient[i].stop();
+        }
+        if (size != len) {
+            //We didn't write the whole buffer
+            send_InProgress = true;
+            send_CurrentIdx = i;
+            send_Pos = size;
+            return;
+        }
+    }
+    ringBuf.remove(len + 3 - 1);
+    send_InProgress = false;
 }
 
-void ESP8266MQTTMesh::broadcast_message(const char *msg) {
-    struct station_info *station_list = wifi_softap_get_station_info();
-    while (station_list != NULL) {
-        char station_mac[18] = {0}; sprintf(station_mac, "%02X:%02X:%02X:%02X:%02X:%02X", MAC2STR(station_list->bssid));
-        IPAddress station_ip = IPAddress((&station_list->ip)->addr);
-        dbgPrintln(DEBUG_MQTT, "Broadcasting to: " + String(station_mac) + " @ " + station_ip.toString());
-        send_message(station_ip, msg);
-        station_list = STAILQ_NEXT(station_list, next);
-    }
-}
-
-void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
+void ESP8266MQTTMesh::send_bssids(int idx) {
     Dir dir = SPIFFS.openDir("/bssid/");
     char msg[TOPIC_LEN];
     char subdomainStr[4];
@@ -520,47 +646,39 @@ void ESP8266MQTTMesh::send_bssids(IPAddress ip) {
         strlcat(msg, dir.fileName().substring(7).c_str(), sizeof(msg)); // bssid
         strlcat(msg, "=", sizeof(msg));
         strlcat(msg, subdomainStr, sizeof(msg));
-        send_message(ip, msg);
+        queue_message(idx, msg);
     }
 }
 
 
-void ESP8266MQTTMesh::handle_client_connection(WiFiClient client) {
-    while (client.connected()) {
-        if (client.available()) {
-            buffer[client.readBytesUntil('\n', buffer, sizeof(buffer)-1)] = 0;
-            bool isLocal = (client.localIP() == WiFi.localIP() ? true : false);
-            IPAddress ip(client.remoteIP());
-            dbgPrintln(DEBUG_MQTT, "Received: msg from " + client.remoteIP().toString() + " on " + (isLocal ? "STA" : "AP"));
-            dbgPrintln(DEBUG_MQTT_EXTRA, "1: " + client.localIP().toString() + " 2: " + WiFi.localIP().toString() + " 3: " + WiFi.softAPIP().toString());
+void ESP8266MQTTMesh::handle_client_data(int idx) {
+            dbgPrintln(DEBUG_MQTT, "Received: msg from " + espClient[idx].remoteIP().toString() + " on " + (idx == 0 ? "STA" : "AP"));
+            dbgPrintln(DEBUG_MQTT_EXTRA, "1: " + espClient[idx].localIP().toString() + " 2: " + WiFi.localIP().toString() + " 3: " + WiFi.softAPIP().toString());
             dbgPrint(DEBUG_MQTT_EXTRA, "--> '");
-            dbgPrint(DEBUG_MQTT_EXTRA, buffer);
+            dbgPrint(DEBUG_MQTT_EXTRA, readData[idx]);
             dbgPrintln(DEBUG_MQTT_EXTRA, "'");
-            client.flush();
-            client.stop();
             char topic[64];
             const char *msg;
-            keyValue(buffer, '=', topic, sizeof(topic), &msg);
-            if (isLocal) {
+            keyValue(readData[idx], '=', topic, sizeof(topic), &msg);
+            if (idx == 0) {
                 //This is a packet from MQTT, need to rebroadcast to each connected station
-                broadcast_message(buffer);
+                queue_message(-1, readData[idx]);
                 parse_message(topic, msg);
             } else {
                 if (strstr(topic,"/mesh_cmd")  == topic + strlen(topic) - 9) {
                     // We will handle this packet locally
                     if (0 == strcmp(msg, "request_bssid")) {
-                        send_bssids(ip);
+                        send_bssids(idx);
                     }
                 } else {
                     if (meshConnect) {
-                        send_message(WiFi.gatewayIP(), buffer);
+                        // Send message through mesh network
+                        queue_message(0, readData[idx]);
                     } else {
                         mqttClient.publish(topic, msg, false);
                     }
                 }
             }
-        }
-    }
 }
 
 bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int keylen, const char **value) {

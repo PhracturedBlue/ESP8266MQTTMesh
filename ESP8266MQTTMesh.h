@@ -13,6 +13,7 @@
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include "cbuf.h"
 #include <PubSubClient.h>
 #include <FS.h>
 #include <functional>
@@ -30,6 +31,10 @@
 #define DEBUG_OTA_EXTRA     (DEBUG_EXTRA | DEBUG_OTA)
 #define DEBUG_ALL           0xFFFFFFFF
 #define DEBUG_NONE          0x00000000
+
+#ifndef ESP8266_NUM_CLIENTS
+  #define ESP8266_NUM_CLIENTS 4
+#endif
 
 typedef struct {
     unsigned int len;
@@ -59,12 +64,20 @@ private:
     uint32_t freeSpaceStart;
     uint32_t freeSpaceEnd;
 #endif
-    WiFiClient espClient;
+    cbuf       ringBuf;
     WiFiServer espServer;
+    WiFiClient espMQTTClient;
+    WiFiClient espClient[ESP8266_NUM_CLIENTS+1];
+    uint8      espMAC[ESP8266_NUM_CLIENTS+1][6];
     PubSubClient mqttClient;
+
+    bool send_InProgress;
+    int send_CurrentIdx;
+    int send_Pos;
     ap_t ap[5];
     int ap_idx = 0;
     char mySSID[16];
+    char readData[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE];
     char buffer[MQTT_MAX_PACKET_SIZE];
     long lastMsg = 0;
     char msg[50];
@@ -86,15 +99,18 @@ private:
     void setup_AP();
     int read_subdomain(const char *fileName);
     void assign_subdomain();
-    void send_bssids(IPAddress ip);
-    void handle_client_connection(WiFiClient client);
+    void send_bssids(int idx);
+    void handle_client_data(int idx);
     void parse_message(const char *topic, const char *msg);
     void mqtt_callback(const char* topic, const byte* payload, unsigned int length);
-    void send_message(IPAddress ip, const char *topicOrMsg, const char *msg = NULL);
+    bool queue_message(int index, const char *topicOrMsg, const char *msg = NULL);
+    void send_messages();
     void broadcast_message(const char *msg);
     void handle_ota(const char *cmd, const char *msg);
     ota_info_t parse_ota_info(const char *str);
     bool check_ota_md5();
+    bool isAPConnected(uint8 *mac);
+    void getMAC(IPAddress ip, uint8 *mac);
 public:
     ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
                     const char **networks, const char *network_password, const char *mesh_password,
