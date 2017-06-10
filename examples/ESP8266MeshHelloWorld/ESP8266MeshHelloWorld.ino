@@ -9,6 +9,9 @@
     #include <PubSubClient.h>
 #endif
 
+#ifndef LED_PIN
+  #define LED_PIN LED_BUILTIN
+#endif
 
 
 #define      FIRMWARE_ID        0x1337
@@ -51,7 +54,7 @@ void setup() {
     Serial.begin(115200);
     mesh.setCallback(callback);
     mesh.begin();
-    pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
 
 }
 
@@ -60,6 +63,8 @@ void loop() {
 
 
     mesh.loop();
+    if (! mesh.connected())
+        return;
 
     unsigned long currentMillis = millis();
 
@@ -82,9 +87,9 @@ void callback(const char *topic, const char *msg) {
 
     if (0 == strcmp(topic, (const char*) ID.c_str())) {
       if(String(msg) == "0") {
-        digitalWrite(LED_BUILTIN, HIGH);
+        digitalWrite(LED_PIN, HIGH);
       }else{
-        digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(LED_PIN, LOW);
       }
     }
 }
