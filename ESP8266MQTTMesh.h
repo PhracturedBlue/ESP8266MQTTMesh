@@ -48,6 +48,7 @@ typedef struct {
 } ap_t;
 
 class ESP8266MQTTMesh {
+
 private:
     unsigned int firmware_id;
     const char   *firmware_ver;
@@ -66,7 +67,6 @@ private:
 #endif
     cbuf       ringBuf;
     WiFiServer espServer;
-    WiFiClient espMQTTClient;
     WiFiClient espClient[ESP8266_NUM_CLIENTS+1];
     uint8      espMAC[ESP8266_NUM_CLIENTS+1][6];
     PubSubClient mqttClient;
@@ -96,6 +96,7 @@ private:
     void scan();
     void connect();
     void connect_mqtt();
+    void shutdown_AP();
     void setup_AP();
     int read_subdomain(const char *fileName);
     void assign_subdomain();
