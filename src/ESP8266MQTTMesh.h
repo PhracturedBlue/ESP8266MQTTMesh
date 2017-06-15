@@ -14,7 +14,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include "cbuf.h"
-#include <PubSubClient.h>
+#include <AsyncMqttClient.h>
 #include <FS.h>
 #include <functional>
 
@@ -73,7 +73,7 @@ private:
     WiFiServer espServer;
     WiFiClient espClient[ESP8266_NUM_CLIENTS+1];
     uint8      espMAC[ESP8266_NUM_CLIENTS+1][6];
-    PubSubClient mqttClient;
+    AsyncMqttClient mqttClient;
 
     bool send_InProgress;
     int send_CurrentIdx;
@@ -116,6 +116,16 @@ private:
     bool check_ota_md5();
     bool isAPConnected(uint8 *mac);
     void getMAC(IPAddress ip, uint8 *mac);
+
+    WiFiEventHandler wifiConnectHandler;
+    void onWifiConnect(const WiFiEventStationModeGotIP& event);
+    void onMqttConnect(bool sessionPresent);
+    void onMqttDisconnect(AsyncMqttClientDisconnectReason reason);
+    void onMqttSubscribe(uint16_t packetId, uint8_t qos);
+    void onMqttUnsubscribe(uint16_t packetId);
+    void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total);
+    void onMqttPublish(uint16_t packetId);
+
 public:
     ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
                     const char **networks, const char *network_password, const char *mesh_password,

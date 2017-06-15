@@ -51,6 +51,7 @@ size_t strlcat (char *dst, const char *src, size_t len) {
     return strlcpy(dst + slen, src, len - slen);
 }
 
+
 ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
                                  const char **networks, const char *network_password, const char *mesh_password,
                                  const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
@@ -67,7 +68,6 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_
         inTopic(inTopic),
         outTopic(outTopic),
         espServer(mesh_port),
-        mqttClient(espClient[0]),
         ringBuf((MQTT_MAX_PACKET_SIZE + 3)*10)
 
 {
@@ -121,13 +121,22 @@ void ESP8266MQTTMesh::begin() {
     }
     WiFi.disconnect();
     WiFi.mode(WIFI_AP_STA);
- 
-    espClient[0].setNoDelay(true); 
+
+    wifiConnectHandler = WiFi.onStationModeGotIP( [this] (const WiFiEventStationModeGotIP& event) { this->onWifiConnect(event); }); 
+
+    mqttClient.onConnect(    [this] (bool sessionPresent)                    { this->onMqttConnect(sessionPresent); });
+    mqttClient.onDisconnect( [this] (AsyncMqttClientDisconnectReason reason) { this->onMqttDisconnect(reason); });
+    mqttClient.onSubscribe(  [this] (uint16_t packetId, uint8_t qos)         { this->onMqttSubscribe(packetId, qos); });
+    mqttClient.onUnsubscribe([this] (uint16_t packetId)                      { this->onMqttUnsubscribe(packetId); });
+    mqttClient.onMessage(    [this] (char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
+                                                                             { this->onMqttMessage(topic, payload, properties, len, index, total); });
+    mqttClient.onPublish(    [this] (uint16_t packetId)                      { this->onMqttPublish(packetId); });
     mqttClient.setServer(mqtt_server, mqtt_port);
-    mqttClient.setCallback([this] (char* topic, byte* payload, unsigned int length) { this->mqtt_callback(topic, payload, length); });
+    //mqttClient.setCallback([this] (char* topic, byte* payload, unsigned int length) { this->mqtt_callback(topic, payload, length); });
     dbgPrintln(DEBUG_WIFI, WiFi.status());
     dbgPrintln(DEBUG_MSG_EXTRA, "Setup Complete");
 }
+
 
 void ESP8266MQTTMesh::loop() {
     static unsigned int last = 0;
@@ -186,10 +195,11 @@ void ESP8266MQTTMesh::loop() {
         return;
     }
     if (! meshConnect) {
+/*
         // We will connect directly to the MQTT broker
         if(! mqttClient.connected()) {
            if (AP_ready) {
-               dbgPrintln(DEBUG_WIFI, "Lost MQTT connection Status:" + String(mqttClient.state()));
+               dbgPrintln(DEBUG_WIFI, "Lost MQTT connection");
                shutdown_AP();
            }
            if (millis() - lastReconnect < 5000) {
@@ -214,6 +224,7 @@ void ESP8266MQTTMesh::loop() {
                 return;
             }
         }
+*/
     }
     unsigned int t1 = millis();
     while (espServer.hasClient())  {
@@ -424,7 +435,10 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
       char filename[32];
       strlcpy(filename, "/bssid/", sizeof(filename));
       strlcat(filename, bssid, sizeof(filename));
-      if(SPIFFS.exists(filename)) {
+      int idx = strtoul(msg, NULL, 10);
+      if(SPIFFS.exists(filename) && 
+          (strcmp(bssid, WiFi.softAPmacAddress().c_str()) != 0 || idx == read_subdomain(filename)))
+      {
           return;
       }
       File f = SPIFFS.open(filename, "w");
@@ -435,6 +449,11 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
       f.print(msg);
       f.print("\n");
       f.close();
+
+      if (AP_ready)
+          shutdown_AP();
+      assign_subdomain();
+      setup_AP();
       return;
   }
   else if (strstr(subtopic ,"ota/") == subtopic) {
@@ -474,31 +493,9 @@ void ESP8266MQTTMesh::mqtt_callback(const char* topic, const byte* payload, unsi
 void ESP8266MQTTMesh::connect_mqtt() {
     dbgPrintln(DEBUG_MQTT, "Attempting MQTT connection...");
     // Attempt to connect
-    if (mqttClient.connect(String("ESP8266-" + WiFi.softAPmacAddress()).c_str())) {
-      dbgPrintln(DEBUG_MQTT, "connected");
-      // Once connected, publish an announcement...
-      char msg[64];
-      char id[9];
-      itoa(firmware_id, id, 16);
-      strlcpy(msg, "Connected FW: ", sizeof(msg));
-      strlcat(msg, id, sizeof(msg));
-      strlcat(msg, " : ", sizeof(msg));
-      strlcat(msg, firmware_ver, sizeof(msg));
-      //strlcpy(publishMsg, outTopic, sizeof(publishMsg));
-      //strlcat(publishMsg, WiFi.localIP().toString().c_str(), sizeof(publishMsg));
-      publish("connect", msg);
-      // ... and resubscribe
-      char subscribe[TOPIC_LEN];
-      strlcpy(subscribe, inTopic, sizeof(subscribe));
-      strlcat(subscribe, "#", sizeof(subscribe));
-      mqttClient.subscribe(subscribe);
-    } else {
-      dbgPrint(DEBUG_MQTT, "failed, rc=");
-      dbgPrint(DEBUG_MQTT, mqttClient.state());
-      dbgPrintln(DEBUG_MQTT, " try again in 5 seconds");
-      // Wait 5 seconds before retrying
-    }
+    mqttClient.connect();
 }
+
 
 void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg) {
     char topic[64];
@@ -506,7 +503,11 @@ void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg) {
     strlcat(topic, mySSID, sizeof(topic));
     strlcat(topic, subtopic, sizeof(topic));
     dbgPrintln(DEBUG_MQTT_EXTRA, "Sending: " + String(topic) + "=" + String(msg));
-    queue_message(0, topic, msg);
+    if (! meshConnect) {
+        mqttClient.publish(topic, 0, false, msg);
+    } else {
+        queue_message(0, topic, msg);
+    }
 }
 
 void ESP8266MQTTMesh::shutdown_AP() {
@@ -591,7 +592,7 @@ void ESP8266MQTTMesh::assign_subdomain() {
             strlcat(topic, "bssid/", sizeof(topic));
             strlcat(topic, WiFi.softAPmacAddress().c_str(), sizeof(topic));
             dbgPrintln(DEBUG_MQTT, "Publishing " + String(topic) + " == " + String(i));
-            mqttClient.publish(topic, msg, true);
+            mqttClient.publish(topic, 0, true, msg);
             return;
         }
     }
@@ -643,13 +644,7 @@ void ESP8266MQTTMesh::send_messages() {
     buffer[len+3] = '\n';
     buffer[len+4] = 0;
     len++;
-    if (index == 0 && ! meshConnect) {
-        char topic[64];
-        const char *msg;
-        buffer[len+2] = 0;
-        keyValue(buffer+3, '=',topic, sizeof(topic), &msg);
-        mqttClient.publish(topic, msg);
-    } else {
+    {
         for(int i = start_Index; i <= last_Index; i++, pos = 0) {
             if(! espClient[i] || ! espClient[i].connected()) {
                 continue;
@@ -904,6 +899,84 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
             dbgPrintln(DEBUG_MSG, "Failed to write firmware at " + String(freeSpaceStart + address, HEX) + " Length: " + String(len));
         }
     }
+}
+
+void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
+    dbgPrintln(DEBUG_WIFI, "Connected to Wi-Fi.");
+    if (! meshConnect)
+        connect_mqtt();
+}
+
+void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
+    dbgPrintln(DEBUG_MQTT, "MQTT Connected");
+    // Once connected, publish an announcement...
+    char msg[64];
+    char id[9];
+    itoa(firmware_id, id, 16);
+    strlcpy(msg, "Connected FW: ", sizeof(msg));
+    strlcat(msg, id, sizeof(msg));
+    strlcat(msg, " : ", sizeof(msg));
+    strlcat(msg, firmware_ver, sizeof(msg));
+    //strlcpy(publishMsg, outTopic, sizeof(publishMsg));
+    //strlcat(publishMsg, WiFi.localIP().toString().c_str(), sizeof(publishMsg));
+    mqttClient.publish("connect", 0, false, msg);
+    // ... and resubscribe
+    char subscribe[TOPIC_LEN];
+    strlcpy(subscribe, inTopic, sizeof(subscribe));
+    strlcat(subscribe, "#", sizeof(subscribe));
+    mqttClient.subscribe(subscribe, 0);
+
+    if (match_bssid(WiFi.softAPmacAddress().c_str())) {
+        setup_AP();
+    }
+}
+
+void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
+    dbgPrintln(DEBUG_MQTT, "Disconnected from MQTT.");
+    if (AP_ready)
+        shutdown_AP();
+    if (WiFi.isConnected()) {
+        connect_mqtt();
+        //mqttReconnectTimer.once(2, connectToMqtt);
+    }
+}
+
+void ESP8266MQTTMesh::onMqttSubscribe(uint16_t packetId, uint8_t qos) {
+  Serial.println("Subscribe acknowledged.");
+  Serial.print("  packetId: ");
+  Serial.println(packetId);
+  Serial.print("  qos: ");
+  Serial.println(qos);
+}
+
+void ESP8266MQTTMesh::onMqttUnsubscribe(uint16_t packetId) {
+  Serial.println("Unsubscribe acknowledged.");
+  Serial.print("  packetId: ");
+  Serial.println(packetId);
+}
+
+void ESP8266MQTTMesh::onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
+  Serial.println("Publish received.");
+  Serial.print("  topic: ");
+  Serial.println(topic);
+  Serial.print("  qos: ");
+  Serial.println(properties.qos);
+  Serial.print("  dup: ");
+  Serial.println(properties.dup);
+  Serial.print("  retain: ");
+  Serial.println(properties.retain);
+  Serial.print("  len: ");
+  Serial.println(len);
+  Serial.print("  index: ");
+  Serial.println(index);
+  Serial.print("  total: ");
+  Serial.println(total);
+}
+
+void ESP8266MQTTMesh::onMqttPublish(uint16_t packetId) {
+  Serial.println("Publish acknowledged.");
+  Serial.print("  packetId: ");
+  Serial.println(packetId);
 }
 
 

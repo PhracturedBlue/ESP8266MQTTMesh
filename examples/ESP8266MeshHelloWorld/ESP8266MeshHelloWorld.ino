@@ -6,7 +6,8 @@
 
 #if 0
     //DO NOT Remove this section!  It is used to help the makefile find libraries
-    #include <PubSubClient.h>
+    #include <AsyncMqttClient.h>
+    #include <ESPAsyncTCP.h>
 #endif
 
 #ifndef LED_PIN
