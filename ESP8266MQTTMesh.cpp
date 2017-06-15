@@ -117,7 +117,7 @@ void ESP8266MQTTMesh::begin() {
     }
     Dir dir = SPIFFS.openDir("/bssid/");
     while(dir.next()) {
-      Serial.println(" ==> '" + dir.fileName() + "'");
+      dbgPrintln(DEBUG_FS, " ==> '" + dir.fileName() + "'");
     }
     WiFi.disconnect();
     WiFi.mode(WIFI_AP_STA);
@@ -125,11 +125,13 @@ void ESP8266MQTTMesh::begin() {
     espClient[0].setNoDelay(true); 
     mqttClient.setServer(mqtt_server, mqtt_port);
     mqttClient.setCallback([this] (char* topic, byte* payload, unsigned int length) { this->mqtt_callback(topic, payload, length); });
-    Serial.print(WiFi.status());
+    dbgPrintln(DEBUG_WIFI, WiFi.status());
     dbgPrintln(DEBUG_MSG_EXTRA, "Setup Complete");
 }
 
 void ESP8266MQTTMesh::loop() {
+    static unsigned int last = 0;
+    unsigned int start = millis();
     if (!wifiConnected() && ! connecting) {
        if(AP_ready) {
            dbgPrintln(DEBUG_WIFI, "Lost WiFi connection");
@@ -213,13 +215,15 @@ void ESP8266MQTTMesh::loop() {
             }
         }
     }
+    unsigned int t1 = millis();
     while (espServer.hasClient())  {
         int i;
         uint8 mac[6];
+        dbgPrintln(DEBUG_WIFI, "AP has waiting connections");
         WiFiClient c = espServer.available();
         getMAC(c.remoteIP(), mac);
         for (i = 1; i <= ESP8266_NUM_CLIENTS; i++) {
-            bool unused = false;
+            //Serial.println("Checking: " + String(i));
             if(! espClient[i] || ! espClient[i].connected()
                || memcmp(espMAC[i], mac, 6) == 0
                || ! isAPConnected(espMAC[i]))
@@ -234,11 +238,14 @@ void ESP8266MQTTMesh::loop() {
             }            
         }
         if (i == ESP8266_NUM_CLIENTS + 1) {
+            dbgPrintln(DEBUG_WIFI, "Discarding AP connection");
             c.flush();
             c.stop();
         }
     }
+    unsigned int t2 = millis();
     send_messages();
+    unsigned int t3 = millis();
     for (int i = meshConnect ? 0 : 1; i <= ESP8266_NUM_CLIENTS; i++) {
         if (espClient[i] && espClient[i].connected()) {
             int strIdx = strlen(readData[i]);
@@ -263,6 +270,10 @@ void ESP8266MQTTMesh::loop() {
             }
         }
     }
+    unsigned int t4 = millis();
+    if (t4 - start > 5)
+        dbgPrintln(DEBUG_TIMING, "User: " + String(start - last) + " t1: " + String(t1 - start) + " t2: " + String(t2 - t1) + " t3: " + String(t3 - t2) + " t4: " + String(t4 - t3));
+    last = t4;
 }
 
 bool ESP8266MQTTMesh::isAPConnected(uint8 *mac) {
