@@ -43,10 +43,6 @@
 #include <ESP8266MQTTMesh.h>
 #include <IRremoteESP8266.h>
 #include "QueueArray.h"
-#if 0
-    //DO NOT Remove this section!  It is used to help the makefile find libraries
-    #include <PubSubClient.h>
-#endif
 
 #define      FIRMWARE_ID        0x2222
 #define      FIRMWARE_VER       "0.2"

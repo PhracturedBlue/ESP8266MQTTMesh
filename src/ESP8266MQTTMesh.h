@@ -13,6 +13,7 @@
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+#include <ESPAsyncTCP.h>
 #include <AsyncMqttClient.h>
 #include <Ticker.h>
 #include <FS.h>

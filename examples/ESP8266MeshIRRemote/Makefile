@@ -134,9 +134,8 @@ CORE_LIB = $(BUILD_DIR)/arduino.ar
 # User defined compilation units and directories
 ifeq ($(LIBS),)
   # Automatically find directories with header files used by the sketch
-  FINDCMD := perl -e 'use File::Find;$$d = shift;while (<>) {$$f{"$$1"} = 1 if /^\s*\#include\s+[<"]([^>"]+)/;}find({follow => 1, wanted => sub {print $$File::Find::dir," " if $$f{$$_}} }, $$d);'
-  LIBS := $(shell $(FINDCMD)  $(ESP_LIBS) $(SKETCH))
-  LIBS := $(LIBS) $(shell $(FINDCMD)  $(USER_LIBS) $(SKETCH))
+  FINDCMD := perl -e 'use File::Find;@d = split(" ", shift);while (<>) {$$f{"$$1"} = 1 if /^\s*\#include\s+[<"]([^>"]+)/;}find({follow => 1, wanted => sub {return if($$File::Find::dir =~ /examples|tests/);print $$File::Find::dir," " if $$f{$$_}}}, @d);'
+  LIBS := $(shell $(FINDCMD) "$(ESP_LIBS) $(HOME)/Arduino/libraries" $(SKETCH) ../../src/*.cpp ../../src/*.h)
   ifeq ($(LIBS),)
     # No dependencies found
     LIBS = /dev/null

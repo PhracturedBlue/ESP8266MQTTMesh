@@ -41,10 +41,6 @@
 #endif
 
 #include <ESP8266MQTTMesh.h>
-#if 0
-    //DO NOT Remove this section!  It is used to help the makefile find libraries
-    #include <PubSubClient.h>
-#endif
 
 #if HAS_DS18B20 && HAS_HLW8012
     #define      FIRMWARE_ID        0x4455
