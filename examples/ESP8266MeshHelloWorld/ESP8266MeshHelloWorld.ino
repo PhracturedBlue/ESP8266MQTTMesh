@@ -8,6 +8,7 @@
     //DO NOT Remove this section!  It is used to help the makefile find libraries
     #include <AsyncMqttClient.h>
     #include <ESPAsyncTCP.h>
+    #include <Ticker.h>
 #endif
 
 #ifndef LED_PIN
