@@ -22,7 +22,9 @@ broker to all nodes, but only nodes with a matching ID will update.
 
 ## Using the Library
 ### Prerequisites
-The only library required to build ESP8266MQTTMesh is 'PubSubClient'.
+This library has been converted to use Asynchronous communication for imroved reliability.  It requires the following libraries to be installed
+* AsyncMqttClient
+* ESPAsyncTCP
 
 If OTA support is desired, the esp8266 module must have at least 1M or Flash (configured as 784k ROM, 256k SPIFFS)
 ### Library initialization
