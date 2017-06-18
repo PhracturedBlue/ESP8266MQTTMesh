@@ -52,6 +52,7 @@ typedef struct {
     int  ssid_idx;
     int  rssi;
 } ap_t;
+#define LAST_AP 5
 
 class ESP8266MQTTMesh {
 
@@ -76,9 +77,10 @@ private:
     uint8           espMAC[ESP8266_NUM_CLIENTS+1][6];
     AsyncMqttClient mqttClient;
 
-    Ticker mqttWaitForSSIDs;
+    Ticker schedule;
 
-    ap_t ap[5];
+    int retry_connect;
+    ap_t ap[LAST_AP];
     int ap_idx = 0;
     char mySSID[16];
     char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE];
@@ -90,6 +92,7 @@ private:
     unsigned long lastReconnect = 0;
     unsigned long lastStatus = 0;
     bool connecting = 0;
+    bool scanning = 0;
     bool AP_ready = false;
     std::function<void(const char *topic, const char *msg)> callback;
 
@@ -99,6 +102,8 @@ private:
     bool match_bssid(const char *bssid);
     void scan();
     void connect();
+    static void connect(ESP8266MQTTMesh *e) { e->connect(); };
+    void schedule_connect(float delay = 5.0);
     void connect_mqtt();
     void shutdown_AP();
     void setup_AP();
@@ -151,7 +156,6 @@ public:
                     const char *inTopic, const char *outTopic);
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
     void begin();
-    void loop();
     void publish(const char *subtopic, const char *msg);
     bool connected();
     static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);

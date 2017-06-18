@@ -57,7 +57,6 @@ void setup() {
 void loop() {
 
 
-    mesh.loop();
     if (! mesh.connected())
         return;
 

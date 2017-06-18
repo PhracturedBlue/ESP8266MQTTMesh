@@ -159,48 +159,8 @@ void ESP8266MQTTMesh::begin() {
 
     dbgPrintln(DEBUG_WIFI_EXTRA, WiFi.status());
     dbgPrintln(DEBUG_MSG_EXTRA, "Setup Complete");
-}
-
-
-void ESP8266MQTTMesh::loop() {
-    static unsigned int last = 0;
-    unsigned int start = millis();
-    if (!wifiConnected() && ! connecting) {
-       if(AP_ready) {
-           dbgPrintln(DEBUG_WIFI, "Lost WiFi connection");
-           shutdown_AP();
-       }
-       WiFi.disconnect();
-       if (millis() - lastReconnect < 5000) {
-           return;
-       }
-       scan();
-       connect();
-    }
-/*
-    if (connecting) {
-       if (wifiConnected()) {
-            connecting = false;
-            dbgPrintln(DEBUG_WIFI, "WiFi connected");
-            dbgPrintln(DEBUG_WIFI, "IP address: ");
-            dbgPrintln(DEBUG_WIFI, WiFi.localIP().toString());
-        } else {
-            if (millis() - lastStatus > 500) {
-                dbgPrintln(DEBUG_WIFI, WiFi.status());
-                lastStatus = millis();
-            }
-            if (millis() - lastReconnect > 60000) {
-                if (! wifiConnected()) {
-                    dbgPrintln(DEBUG_MSG, "WiFi Connection Failed");
-                }
-                lastReconnect = millis();
-                WiFi.disconnect();
-                ap_idx++;
-                connect();
-            }
-        }
-    }
-*/
+    ap_idx = LAST_AP;
+    connect();
 }
 
 bool ESP8266MQTTMesh::isAPConnected(uint8 *mac) {
@@ -239,13 +199,25 @@ bool ESP8266MQTTMesh::match_bssid(const char *bssid) {
 }
 
 void ESP8266MQTTMesh::scan() {
-    for(int i = 0; i < sizeof(ap) / sizeof(ap_t); i++) {
-        ap[i].rssi = -99999;
-        ap[i].ssid_idx = -2;
+    //Need to rescan
+    if (! scanning) {
+        for(int i = 0; i < LAST_AP; i++) {
+            ap[i].rssi = -99999;
+            ap[i].ssid_idx = NETWORK_LAST_INDEX;
+        }
+        ap_idx = 0;
+        WiFi.disconnect();
+        WiFi.mode(WIFI_STA);
+        dbgPrintln(DEBUG_WIFI, "Scanning for networks");
+        WiFi.scanDelete();
+        WiFi.scanNetworks(true,true);
+        scanning = true;
     }
-    ap_idx = 0;
-    dbgPrintln(DEBUG_WIFI, "Scanning for networks");
-    int numberOfNetworksFound = WiFi.scanNetworks(false,true);
+    int numberOfNetworksFound = WiFi.scanComplete();
+    if (numberOfNetworksFound < 0) {
+        return;
+    }
+    scanning = false;
     dbgPrintln(DEBUG_WIFI, "Found: " + String(numberOfNetworksFound));
     int ssid_idx;
     for(int i = 0; i < numberOfNetworksFound; i++) {
@@ -288,13 +260,13 @@ void ESP8266MQTTMesh::scan() {
         dbgPrintln(DEBUG_WIFI, "RSSI: " + String(WiFi.RSSI(i)));
         int rssi = WiFi.RSSI(i);
         //sort by RSSI
-        for(int j = 0; j < sizeof(ap) / sizeof(ap_t); j++) {
+        for(int j = 0; j < LAST_AP; j++) {
             if(ap[j].ssid_idx == NETWORK_LAST_INDEX ||
                (network_idx >= 0 &&
                   (ap[j].ssid_idx == NETWORK_MESH_NODE || rssi > ap[j].rssi)) ||
                (network_idx == NETWORK_MESH_NODE && ap[j].ssid_idx == NETWORK_MESH_NODE && rssi > ap[j].rssi))
             {
-                for(int k = sizeof(ap) / sizeof(ap_t) -1; k > j; k--) {
+                for(int k = LAST_AP -1; k > j; k--) {
                     ap[k] = ap[k-1];
                 }
                 ap[j].rssi = rssi;
@@ -306,13 +278,31 @@ void ESP8266MQTTMesh::scan() {
     }
 }
 
+void ESP8266MQTTMesh::schedule_connect(float delay) {
+    dbgPrintln(DEBUG_WIFI, "Scheduling reconnect for " + String(delay,2)+ " seconds from now");
+    schedule.once(delay, connect, this);
+}
+
 void ESP8266MQTTMesh::connect() {
-    connecting = false;
-    lastReconnect = millis();
-    if (ap_idx >= sizeof(ap)/sizeof(ap_t) ||  ap[ap_idx].ssid_idx == NETWORK_LAST_INDEX) {
+    if (WiFi.isConnected()) {
+        dbgPrintln(DEBUG_WIFI, "Called connect when already connected!");
         return;
     }
-    for (int i = 0; i < sizeof(ap)/sizeof(ap_t); i++) {
+    connecting = false;
+    retry_connect = 1;
+    lastReconnect = millis();
+    if (scanning || ap_idx >= LAST_AP ||  ap[ap_idx].ssid_idx == NETWORK_LAST_INDEX) {
+        scan();
+    } if (scanning) {
+        schedule_connect(0.5);
+        return;
+    }
+    if (ap[ap_idx].ssid_idx == NETWORK_LAST_INDEX) {
+        // No networks found, try again
+        schedule_connect();
+        return;
+    }    
+    for (int i = 0; i < LAST_AP; i++) {
         dbgPrintln(DEBUG_WIFI, String(i) + String(i == ap_idx ? " * " : "   ") + String(ap[i].bssid) + " " + String(ap[i].rssi));
     }
     char ssid[64];
@@ -324,6 +314,8 @@ void ESP8266MQTTMesh::connect() {
         strlcat(filename, ap[ap_idx].bssid, sizeof(filename));
         int subdomain = read_subdomain(filename);
         if (subdomain == -1) {
+            ap_idx++;
+            schedule_connect();
             return;
         }
         itoa(subdomain, subdomain_c, 10);
@@ -455,6 +447,7 @@ void ESP8266MQTTMesh::setup_AP() {
     if (meshConnect) {
         publish("mesh_cmd", "request_bssid");
     }
+    connecting = false; //Connection complete
     AP_ready = true;
 }
 int ESP8266MQTTMesh::read_subdomain(const char *fileName) {
@@ -783,6 +776,17 @@ void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
 void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
     //Reasons are here: ESP8266WiFiType.h-> WiFiDisconnectReason 
     dbgPrintln(DEBUG_WIFI, "Disconnected from Wi-Fi: " + event.ssid + " because: " + String(event.reason));
+    WiFi.disconnect();
+    if (! connecting) {
+        ap_idx = LAST_AP;
+    } else if (event.reason == WIFI_DISCONNECT_REASON_ASSOC_TOOMANY  && retry_connect) {
+        // If we rebooted without a clean shutdown, we may still be associated with this AP, in which case
+        // we'll be booted and should try again
+        retry_connect--;
+    } else {
+        ap_idx++;
+    }
+    schedule_connect();
 }
 
 //void ESP8266MQTTMesh::onDHCPTimeout() {
@@ -819,7 +823,8 @@ void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
     if (match_bssid(WiFi.softAPmacAddress().c_str())) {
         setup_AP();
     } else {
-        mqttWaitForSSIDs.once(10.0, assign_subdomain, this);
+        //If we don't get a mapping for our BSSID within 10 seconds, define one
+        schedule.once(10.0, assign_subdomain, this);
     }
 }
 
@@ -828,7 +833,6 @@ void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
     shutdown_AP();
     if (WiFi.isConnected()) {
         connect_mqtt();
-        //mqttReconnectTimer.once(2, connectToMqtt);
     }
 }
 
@@ -890,8 +894,6 @@ void ESP8266MQTTMesh::onDisconnect(AsyncClient* c) {
         dbgPrintln(DEBUG_WIFI, "Disconnected from mesh");
         shutdown_AP();
         WiFi.disconnect();
-        ap_idx++;
-        connect();
         return;
     }
     for (int i = 1; i <= ESP8266_NUM_CLIENTS; i++) {

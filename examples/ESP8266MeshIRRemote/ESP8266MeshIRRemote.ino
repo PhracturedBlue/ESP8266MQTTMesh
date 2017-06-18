@@ -220,7 +220,6 @@ void setup(void){
 }
  
 void loop(void){
-  mesh.loop();
   if (! cmdQueue.isEmpty()) {
     Cmd *nextCmd = cmdQueue.peek();
     Serial.println("Sendng code: Repeat=" + String(nextCmd->repeat) + " queue size= " + cmdQueue.count());

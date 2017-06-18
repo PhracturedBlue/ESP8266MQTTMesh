@@ -137,7 +137,6 @@ void loop() {
     static unsigned long lastSend = 0;
     static bool needToSend = false;
 
-    mesh.loop();
     unsigned long now = millis();
 
 #if HAS_DS18B20
