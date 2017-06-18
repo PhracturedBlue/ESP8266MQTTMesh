@@ -26,7 +26,10 @@ This library has been converted to use Asynchronous communication for imroved re
 * AsyncMqttClient
 * ESPAsyncTCP
 
-If OTA support is desired, the esp8266 module must have at least 1M or Flash (configured as 784k ROM, 256k SPIFFS)
+If OTA support is desired, the esp8266 module must have at least 1M or Flash (configured as 784k ROM, 256k SPIFFS).  The OTA image is stored
+between the end of the firmware image and the beginning of the filesystem (i.e. not in the filesystem itself).  Thus, for a 1M Flash, the firmware can
+be no larger than ~390kB
+
 ### Library initialization
 The ESP8266MQTTMesh library requires a number of parameters during initialization:
 * `int firmware_id`:  This identifies a specific node codebase.  Each unique firmware should have its own id, and it should not be changed between revisions of the code
