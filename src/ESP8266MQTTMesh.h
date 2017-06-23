@@ -1,6 +1,9 @@
 #ifndef _ESP8266MQTTMESH_H_
 #define _ESP8266MQTTMESH_H_
 
+#if ! defined(MQTT_MAX_PACKET_SIZE)
+    #define MQTT_MAX_PACKET_SIZE 1152
+#endif
 #if  ! defined(ESP8266MESHMQTT_DISABLE_OTA)
     //By default we support OTA
     #if ! defined(MQTT_MAX_PACKET_SIZE) || MQTT_MAX_PACKET_SIZE < (1024+128)

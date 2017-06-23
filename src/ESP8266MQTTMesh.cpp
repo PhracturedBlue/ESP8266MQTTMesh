@@ -46,7 +46,7 @@ enum {
 #endif
 
 //#define DEBUG_LEVEL (DEBUG_WIFI | DEBUG_MQTT | DEBUG_OTA)
-#define DEBUG_LEVEL DEBUG_ALL
+#define DEBUG_LEVEL DEBUG_ALL_EXTRA
 
 
 #define dbgPrintln(lvl, msg) if (((lvl) & (DEBUG_LEVEL)) == (lvl)) Serial.println("[" + String(__FUNCTION__) + "] " + msg)
@@ -441,7 +441,7 @@ void ESP8266MQTTMesh::setup_AP() {
     IPAddress apSubmask(255, 255, 255, 0);
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(apIP, apGateway, apSubmask);
-    WiFi.softAP(mySSID, mesh_password, 1, 1);
+    WiFi.softAP(mySSID, mesh_password, WiFi.channel(), 1);
     dbgPrintln(DEBUG_WIFI, "Initialized AP as '" + String(mySSID) + "'  IP '" + apIP.toString() + "'");
     strlcat(mySSID, "/", sizeof(mySSID));
     if (meshConnect) {
