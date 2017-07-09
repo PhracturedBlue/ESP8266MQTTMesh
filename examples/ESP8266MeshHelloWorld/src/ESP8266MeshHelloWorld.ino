@@ -18,7 +18,11 @@ const char*  base_ssid        = BASE_SSID;
 const char*  mqtt_server      = MQTT_SERVER;
 const int    mqtt_port        = MQTT_PORT;
 const int    mesh_port        = MESH_PORT;
-
+#if ASYNC_TCP_SSL_ENABLED
+const uint8_t *mqtt_fingerprint = MQTT_FINGERPRINT;
+bool         mqtt_secure      = MQTT_SECURE;
+bool         mesh_secure      = MESH_SECURE;
+#endif
 
 String ID  = String(ESP.getChipId());
 
@@ -37,7 +41,11 @@ int cnt = 0;
 ESP8266MQTTMesh mesh(FIRMWARE_ID, FIRMWARE_VER,
                      networks, network_password, mesh_password,
                      base_ssid, mqtt_server, mqtt_port, mesh_port,
-                     in_topic, out_topic);
+                     in_topic, out_topic
+#if ASYNC_TCP_SSL_ENABLED
+                     , mqtt_secure, mqtt_fingerprint, mesh_secure
+#endif
+                    );
 
 
 void callback(const char *topic, const char *msg);

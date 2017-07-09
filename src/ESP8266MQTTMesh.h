@@ -75,6 +75,11 @@ private:
     uint32_t freeSpaceStart;
     uint32_t freeSpaceEnd;
 #endif
+#if ASYNC_TCP_SSL_ENABLED
+    bool mqtt_secure;
+    bool mesh_secure;
+    const uint8_t *mqtt_fingerprint;
+#endif
     AsyncServer     espServer;
     AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1];
     uint8           espMAC[ESP8266_NUM_CLIENTS+1][6];
@@ -145,6 +150,7 @@ private:
     void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total);
     void onMqttPublish(uint16_t packetId);
 
+    int onSslFileRequest(const char *filename, uint8_t **buf);
     void onClient(AsyncClient* c);
     void onConnect(AsyncClient* c);
     void onDisconnect(AsyncClient* c);
@@ -156,7 +162,13 @@ public:
     ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
                     const char **networks, const char *network_password, const char *mesh_password,
                     const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
-                    const char *inTopic, const char *outTopic);
+                    const char *inTopic, const char *outTopic
+#if ASYNC_TCP_SSL_ENABLED
+                    , bool mqtt_secure = false,
+                    const uint8_t *mqtt_fingerprint = NULL,
+                    bool mesh_secure = false
+#endif
+                    );
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
     void begin();
     void publish(const char *subtopic, const char *msg);

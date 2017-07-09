@@ -59,7 +59,11 @@ size_t strlcat (char *dst, const char *src, size_t len) {
 ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
                                  const char **networks, const char *network_password, const char *mesh_password,
                                  const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
-                                 const char *inTopic,   const char *outTopic) :
+                                 const char *inTopic,   const char *outTopic
+#if ASYNC_TCP_SSL_ENABLED
+                                 , bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure
+#endif
+                                 ) :
         firmware_id(firmware_id),
         firmware_ver(firmware_ver),
         networks(networks),
@@ -71,7 +75,13 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_
         mesh_port(mesh_port),
         inTopic(inTopic),
         outTopic(outTopic),
+#if ASYNC_TCP_SSL_ENABLED
+        mqtt_secure(mqtt_secure),
+        mqtt_fingerprint(mqtt_fingerprint),
+        mesh_secure(mesh_secure),
+#endif
         espServer(mesh_port)
+        
 {
     int len = strlen(inTopic);
     if (len > 16) {
@@ -105,6 +115,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_
 void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
     callback = _callback;
 }
+
 void ESP8266MQTTMesh::begin() {
     dbgPrintln(DEBUG_MSG_EXTRA, "Starting Firmware " + String(firmware_id, HEX) + " : " + String(firmware_ver));
 #if HAS_OTA
@@ -144,6 +155,12 @@ void ESP8266MQTTMesh::begin() {
 
     espServer.onClient(     [this](void * arg, AsyncClient *c){ this->onClient(c);  }, this);
     espServer.setNoDelay(true);
+#if ASYNC_TCP_SSL_ENABLED
+    espServer.onSslFileRequest([this](void * arg, const char *filename, uint8_t **buf) -> int { return this->onSslFileRequest(filename, buf); }, this);
+    if (mesh_secure) {
+        espServer.beginSecure("/ssl/server.cer","/ssl/server.key",NULL);
+    } else
+#endif
     espServer.begin();
 
     mqttClient.onConnect(    [this] (bool sessionPresent)                    { this->onMqttConnect(sessionPresent); });
@@ -154,6 +171,12 @@ void ESP8266MQTTMesh::begin() {
                                                                              { this->onMqttMessage(topic, payload, properties, len, index, total); });
     mqttClient.onPublish(    [this] (uint16_t packetId)                      { this->onMqttPublish(packetId); });
     mqttClient.setServer(mqtt_server, mqtt_port);
+#if ASYNC_TCP_SSL_ENABLED
+    mqttClient.setSecure(mqtt_secure);
+    if (mqtt_fingerprint) {
+        mqttClient.addServerFingerprint(mqtt_fingerprint);
+    }
+#endif
     //mqttClient.setCallback([this] (char* topic, byte* payload, unsigned int length) { this->mqtt_callback(topic, payload, length); });
 
 
@@ -830,6 +853,11 @@ void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
 
 void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
     dbgPrintln(DEBUG_MQTT, "Disconnected from MQTT.");
+#if ASYNC_TCP_SSL_ENABLED
+    if (reason == AsyncMqttClientDisconnectReason::TLS_BAD_FINGERPRINT) {
+        dbgPrintln(DEBUG_MQTT, "Bad MQTT server fingerprint.");
+    }
+#endif
     shutdown_AP();
     if (WiFi.isConnected()) {
         connect_mqtt();
@@ -864,6 +892,25 @@ void ESP8266MQTTMesh::onMqttPublish(uint16_t packetId) {
   //Serial.println(packetId);
 }
 
+#if ASYNC_TCP_SSL_ENABLED
+int ESP8266MQTTMesh::onSslFileRequest(const char *filename, uint8_t **buf) {
+    dbgPrintln(DEBUG_WIFI, "SSL File: " + filename);
+    File file = SPIFFS.open(filename, "r");
+    if(file){
+      size_t size = file.size();
+      uint8_t * nbuf = (uint8_t*)malloc(size);
+      if(nbuf){
+        size = file.read(nbuf, size);
+        file.close();
+        *buf = nbuf;
+        return size;
+      }
+      file.close();
+    }
+    *buf = 0;
+    return 0;
+}
+#endif
 void ESP8266MQTTMesh::onClient(AsyncClient* c) {
     dbgPrintln(DEBUG_WIFI, "Got client connection from: " + c->remoteIP().toString());
     for (int i = 1; i <= ESP8266_NUM_CLIENTS; i++) {
@@ -884,6 +931,25 @@ void ESP8266MQTTMesh::onClient(AsyncClient* c) {
 
 void ESP8266MQTTMesh::onConnect(AsyncClient* c) {
     dbgPrintln(DEBUG_WIFI, "Connected to mesh");
+#if ASYNC_TCP_SSL_ENABLED
+    if (mesh_secure) {
+        SSL* clientSsl = c->getSSL();
+        bool sslFoundFingerprint = false;
+        uint8_t *fingerprint;
+        if(onSslFileRequest("/ssl/fingerprint", &fingerprint)) {
+            if (ssl_match_fingerprint(clientSsl, fingerprint) == SSL_OK) {
+                sslFoundFingerprint = true;
+            }
+        }
+        free(fingerprint);
+
+        if (!sslFoundFingerprint) {
+            c->close(true);
+            return;
+        }
+    }
+#endif
+
     if (match_bssid(WiFi.softAPmacAddress().c_str())) {
         setup_AP();
     }
