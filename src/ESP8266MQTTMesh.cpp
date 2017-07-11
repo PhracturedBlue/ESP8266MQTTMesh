@@ -862,6 +862,10 @@ void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
 #if ASYNC_TCP_SSL_ENABLED
     if (reason == AsyncMqttClientDisconnectReason::TLS_BAD_FINGERPRINT) {
         dbgPrintln(EMMDBG_MQTT, "Bad MQTT server fingerprint.");
+        if (WiFi.isConnected()) {
+            WiFi.disconnect();
+        }
+        return;
     }
 #endif
     shutdown_AP();
