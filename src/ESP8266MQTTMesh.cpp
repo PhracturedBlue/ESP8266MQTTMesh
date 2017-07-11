@@ -46,8 +46,9 @@ enum {
 #endif
 
 //#define EMMDBG_LEVEL (EMMDBG_WIFI | EMMDBG_MQTT | EMMDBG_OTA)
-#define EMMDBG_LEVEL EMMDBG_ALL_EXTRA
-
+#ifndef EMMDBG_LEVEL
+  #define EMMDBG_LEVEL EMMDBG_ALL_EXTRA
+#endif
 
 #define dbgPrintln(lvl, msg) if (((lvl) & (EMMDBG_LEVEL)) == (lvl)) Serial.println("[" + String(__FUNCTION__) + "] " + msg)
 size_t strlcat (char *dst, const char *src, size_t len) {
@@ -158,6 +159,7 @@ void ESP8266MQTTMesh::begin() {
 #if ASYNC_TCP_SSL_ENABLED
     espServer.onSslFileRequest([this](void * arg, const char *filename, uint8_t **buf) -> int { return this->onSslFileRequest(filename, buf); }, this);
     if (mesh_secure) {
+        dbgPrintln(EMMDBG_WIFI, "Starting secure server");
         espServer.beginSecure("/ssl/server.cer","/ssl/server.key",NULL);
     } else
 #endif
@@ -788,7 +790,11 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
 void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
     if (meshConnect) {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mesh: " + WiFi.gatewayIP().toString() + " on port: " + String(mesh_port));
+#if ASYNC_TCP_SSL_ENABLED
+        espClient[0]->connect(WiFi.gatewayIP(), mesh_port, mesh_secure);
+#else
         espClient[0]->connect(WiFi.gatewayIP(), mesh_port);
+#endif
         bufptr[0] = inbuffer[0];
     } else {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mqtt");
@@ -894,7 +900,6 @@ void ESP8266MQTTMesh::onMqttPublish(uint16_t packetId) {
 
 #if ASYNC_TCP_SSL_ENABLED
 int ESP8266MQTTMesh::onSslFileRequest(const char *filename, uint8_t **buf) {
-    dbgPrintln(EMMDBG_WIFI, "SSL File: " + filename);
     File file = SPIFFS.open(filename, "r");
     if(file){
       size_t size = file.size();
@@ -903,11 +908,13 @@ int ESP8266MQTTMesh::onSslFileRequest(const char *filename, uint8_t **buf) {
         size = file.read(nbuf, size);
         file.close();
         *buf = nbuf;
+        dbgPrintln(EMMDBG_WIFI, "SSL File: " + filename + " Size: " + String(size));
         return size;
       }
       file.close();
     }
     *buf = 0;
+    dbgPrintln(EMMDBG_WIFI, "Error reading SSL File: " + filename);
     return 0;
 }
 #endif
@@ -936,14 +943,17 @@ void ESP8266MQTTMesh::onConnect(AsyncClient* c) {
         SSL* clientSsl = c->getSSL();
         bool sslFoundFingerprint = false;
         uint8_t *fingerprint;
-        if(onSslFileRequest("/ssl/fingerprint", &fingerprint)) {
+        if (! clientSsl) {
+            dbgPrintln(EMMDBG_WIFI, "Connection is not secure");
+        } else if(onSslFileRequest("/ssl/fingerprint", &fingerprint)) {
             if (ssl_match_fingerprint(clientSsl, fingerprint) == SSL_OK) {
                 sslFoundFingerprint = true;
             }
+            free(fingerprint);
         }
-        free(fingerprint);
 
         if (!sslFoundFingerprint) {
+            dbgPrintln(EMMDBG_WIFI, "Couldn't match SSL fingerprint");
             c->close(true);
             return;
         }
