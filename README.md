@@ -26,6 +26,11 @@ This library has been converted to use Asynchronous communication for imroved re
 * AsyncMqttClient
 * ESPAsyncTCP
 
+If SSL support is required, the development (staging) branch of the esp8266 library is also needed.
+If using platformio, this can be installed via these [instructions](http://docs.platformio.org/en/latest/platforms/espressif8266.html#using-arduino-framework-with-staging-version).
+
+**NOTE:** Enabling SSL will add ~70kB to the firmware size, and may make it impossible to use OTA updates depending on firmware and flash size.
+
 If OTA support is desired, the esp8266 module must have at least 1M or Flash (configured as 784k ROM, 256k SPIFFS).  The OTA image is stored
 between the end of the firmware image and the beginning of the filesystem (i.e. not in the filesystem itself).  Thus, for a 1M Flash, the firmware can
 be no larger than ~390kB
@@ -43,6 +48,12 @@ The ESP8266MQTTMesh library requires a number of parameters during initializatio
 * `int mesh_port`: Port for mesh nodes to listen on for message parsing
 * `const char *in_topic`: MQTT topic prefix for messages sent to the node
 * `const char *out_topic`: MQTT topic prefix for messages from the node
+
+If SSL support is enabled, the following optional parameters are available:
+* `bool mqtt_secure`: Enable MQTT SSL support
+* `const uint8_t *mqtt_fingerprint`: Fingerprint to verify MQTT certificate (prevent man-in-the-middle attacks)
+* `bool mesh_secure`: Enable SSL connection between mesh nodes
+
 ### Interacting with the mesh
 Besides the constructor, he code must call the `begin()` method during setup, and the `loop()` method in the main loop
 
@@ -50,3 +61,19 @@ If messages need to be received by the node, execute the `callback()` function d
 (prototype: `void callback(const char *topic, const char *payload)`)
 
 To send messages to the MQTT broker, use `publish(const char *topic, const char * payload)`
+
+### SSL support
+SSL support is enabled by defining `ASYNC_TCP_SSL_ENABLED=1`.  This must be done globally during build.
+
+Once enabled, SSL can be optionally enabled between the node and the MQTT broker or between mesh nodes (or both).
+
+**NOTE:** Enabling SSL between mesh nodes should not provide additional security, since the mesh connections are already secured via WPA, so this is not recommended
+
+For additional security, the Fingerprint of your MQTT broker's SSL certificate can be fetched using the included `utils/get_mqtt_fingerprint.py` script.  Supplying the fingerprint is optional, but can prevent man-in-the-middle attacks.
+
+To use SSL between mesh nodes, you must install 3 files into the '/ssl' directory on the SPIFFS filesystem of the node:
+* `ssl/server.cer`
+* `ssl/server.key`
+* `ssl/fingerprint`
+
+These files can be generated using the included `utils/gen_server_cert.sh` script.
