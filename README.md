@@ -36,23 +36,69 @@ between the end of the firmware image and the beginning of the filesystem (i.e. 
 be no larger than ~390kB
 
 ### Library initialization
-The ESP8266MQTTMesh library requires a number of parameters during initialization:
-* `int firmware_id`:  This identifies a specific node codebase.  Each unique firmware should have its own id, and it should not be changed between revisions of the code
-* `const char *firmware_ver`: This is a string that idenitfies the firmware.  It can be whatever you like.  It will be broadcast to the MQTT broker on successful connection
-* `const char *networks[]`: A list of ssids to search for to connect to the wireless network.  the list should be terminated with an empty string
-* `const char *network_password`: The password to use when connecting to the Wifi network.  Only a single password is supported, even if multiple SSIDs are specified
-* `const char *mesh_password`: The password to use when a node connects to another node on the mesh
-* `const char *base_ssid`: The base SSID used for mesh nodes.  The current node number (subnet) will be appended to this to create the node's unique SSID
-* `const char *mqtt_server`: Host which runs the MQTT broker
-* `int mqtt_port`: Port which the MQTT broker is running on
-* `int mesh_port`: Port for mesh nodes to listen on for message parsing
-* `const char *in_topic`: MQTT topic prefix for messages sent to the node
-* `const char *out_topic`: MQTT topic prefix for messages from the node
+The ESP8266MQTTMesh only requires 3 parameters to initialize, but there are many additional optional parameters:
+```
+ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt_server, mqtt_port).build();
+```
+- `const char *networks[]` *Required*: A list of ssids to search for to connect to the wireless network.  the list should be terminated with an empty string
+- `const char *network_password` *Required*: The password to use when connecting to the Wifi network.  Only a single password is supported, even if multiple SSIDs are specified
+- `const char *mqtt_server` *Required*: Host which runs the MQTT broker
+- `int mqtt_port` *Optional*: Port which the MQTT broker is running on.  Defaults to 1883 if MQTT SSL is not enabled.  Defaults to 8883 is MQTT SSL is enabled
+
+Additional Parameters can be enabled via the *Builder* for example:
+```
+ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt_server, mqtt_port)
+                       .setVersion(firmware_ver, firmware_id)
+                       .setMeshPassword(password)
+                       .build()
+                       .build();
+```
+These additional parameters are specified before calling build(), and as few or as many can be used as neeeded.
+
+```
+setVersion(firmware_ver, firmware_id)
+```
+- `const char *firmware_ver`: This is a string that idenitfies the firmware.  It can be whatever you like.  It will be broadcast to the MQTT broker on successful connection
+- `int firmware_id`:  This identifies a specific node codebase.  Each unique firmware should have its own id, and it should not be changed between revisions of the code
+
+```
+setMqttAuth(username, password)
+```
+- `const char *username`: The username used to login to the MQTT broker
+- `const char *password`: The password used to login to the MQTT broker
+
+```
+setMeshPassword(password)
+```
+- `const char *password`: The password to use when a node connects to another node on the mesh.  Default: `ESP8266MQTTMesh`
+
+```
+setBaseSSID(ssid)
+```
+- `const char *ssid`: The base SSID used for mesh nodes.  The current node number (subnet) will be appended to this to create the node's unique SSID.  Default: `mesh_esp8266-`
+
+```
+setMeshPort(port)
+```
+- `int port`: Port for mesh nodes to listen on for message parsing. Default: `1884`
+
+```
+setTopic(in_topic, out_topic)
+```
+- `const char *in_topic`: MQTT topic prefix for messages sent to the node.  Default: `esp8266-in/`
+- `const char *out_topic`: MQTT topic prefix for messages from the node. Default: `esp8266-out/`
 
 If SSL support is enabled, the following optional parameters are available:
-* `bool mqtt_secure`: Enable MQTT SSL support
-* `const uint8_t *mqtt_fingerprint`: Fingerprint to verify MQTT certificate (prevent man-in-the-middle attacks)
-* `bool mesh_secure`: Enable SSL connection between mesh nodes
+```
+setMqttSSL(enable, fingerprint)
+```
+- `bool enable`: Enable MQTT SSL support.  Default: `false`
+- `const uint8_t *fingerprint`: Fingerprint to verify MQTT certificate (prevent man-in-the-middle attacks)
+
+```
+setMeshSSL(enable)
+```
+- `bool enable`: Enable SSL connection between mesh nodes
 
 ### Interacting with the mesh
 Besides the constructor, he code must call the `begin()` method during setup, and the `loop()` method in the main loop

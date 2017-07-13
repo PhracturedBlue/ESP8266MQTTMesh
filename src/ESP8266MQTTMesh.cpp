@@ -57,32 +57,34 @@ size_t strlcat (char *dst, const char *src, size_t len) {
 }
 
 
-ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
-                                 const char **networks, const char *network_password, const char *mesh_password,
-                                 const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
-                                 const char *inTopic,   const char *outTopic
+ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_password,
+                    const char *mqtt_server, int mqtt_port,
+                    const char *mqtt_username, const char *mqtt_password,
+                    const char *firmware_ver, int firmware_id,
+                    const char *mesh_password, const char *base_ssid, int mesh_port,
 #if ASYNC_TCP_SSL_ENABLED
-                                 , bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure
+                    bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
 #endif
-                                 ) :
-        firmware_id(firmware_id),
-        firmware_ver(firmware_ver),
+                    const char *inTopic, const char *outTopic
+                    ) :
         networks(networks),
         network_password(network_password),
+        mqtt_server(mqtt_server),
+        mqtt_username(mqtt_username),
+        mqtt_password(mqtt_password),
+        firmware_id(firmware_id),
+        firmware_ver(firmware_ver),
         mesh_password(mesh_password),
         base_ssid(base_ssid),
-        mqtt_server(mqtt_server),
-        mqtt_port(mqtt_port),
         mesh_port(mesh_port),
-        inTopic(inTopic),
-        outTopic(outTopic),
 #if ASYNC_TCP_SSL_ENABLED
         mqtt_secure(mqtt_secure),
         mqtt_fingerprint(mqtt_fingerprint),
         mesh_secure(mesh_secure),
 #endif
+        inTopic(inTopic),
+        outTopic(outTopic),
         espServer(mesh_port)
-        
 {
     int len = strlen(inTopic);
     if (len > 16) {
@@ -102,6 +104,14 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_
         dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
         die();
     }
+    if (mqtt_port == 0) {
+#if ASYNC_TCP_SSL_ENABLED
+        this->mqtt_port = mqtt_secure ? 8883 : 1883;
+#else
+        this->mqtt_port = 1883;
+#endif
+    }
+
     espClient[0] = new AsyncClient();
     mySSID[0] = 0;
 #if HAS_OTA
@@ -111,6 +121,25 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_
     //freeSpaceEnd = (uint32_t)&_SPIFFS_start - 0x40200000;
     freeSpaceEnd = ESP.getFreeSketchSpace() + freeSpaceStart;
 #endif
+}
+
+ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
+                                 const char **networks, const char *network_password, const char *mesh_password,
+                                 const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
+                                 const char *inTopic,   const char *outTopic
+#if ASYNC_TCP_SSL_ENABLED
+                                 , bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure
+#endif
+                                 ) :
+    ESP8266MQTTMesh(networks, network_password, mqtt_server, mqtt_port,
+                    NULL, NULL,
+                    firmware_ver, firmware_id,
+                    mesh_password, base_ssid, mesh_port,
+#if ASYNC_TCP_SSL_ENABLED
+                    mqtt_secure, mqtt_fingerprint, mesh_secure,
+#endif
+                    inTopic, outTopic)
+{
 }
 
 void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
@@ -173,6 +202,9 @@ void ESP8266MQTTMesh::begin() {
                                                                              { this->onMqttMessage(topic, payload, properties, len, index, total); });
     mqttClient.onPublish(    [this] (uint16_t packetId)                      { this->onMqttPublish(packetId); });
     mqttClient.setServer(mqtt_server, mqtt_port);
+    if (mqtt_username || mqtt_password)
+        mqttClient.setCredentials(mqtt_username, mqtt_password);
+
 #if ASYNC_TCP_SSL_ENABLED
     mqttClient.setSecure(mqtt_secure);
     if (mqtt_fingerprint) {

@@ -38,15 +38,17 @@ const long interval = 5000;
 int cnt = 0;
 
 
-ESP8266MQTTMesh mesh(FIRMWARE_ID, FIRMWARE_VER,
-                     networks, network_password, mesh_password,
-                     base_ssid, mqtt_server, mqtt_port, mesh_port,
-                     in_topic, out_topic
+ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt_server, mqtt_port)
+                       .setVersion(FIRMWARE_VER, FIRMWARE_ID)
+                       .setMeshPassword(mesh_password)
+                       .setBaseSSID(base_ssid)
+                       .setMeshPort(mesh_port)
+                       .setTopic(in_topic, out_topic)
 #if ASYNC_TCP_SSL_ENABLED
-                     , mqtt_secure, mqtt_fingerprint, mesh_secure
+                       .setMqttSSL(mqtt_secure, mqtt_fingerprint)
+                       .setMeshSSL(mesh_secure)
 #endif
-                    );
-
+                       .build();
 
 void callback(const char *topic, const char *msg);
 

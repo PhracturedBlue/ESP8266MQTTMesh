@@ -49,16 +49,13 @@
 
 const char*  networks[]       = NETWORK_LIST;
 const char*  network_password = NETWORK_PASSWORD;
-const char*  mesh_password    = MESH_PASSWORD;
-const char*  base_ssid        = BASE_SSID;
 const char*  mqtt_server      = MQTT_SERVER;
-const int    mqtt_port        = MQTT_PORT;
-const int    mesh_port        = MESH_PORT;
+const char*  mesh_password    = MESH_PASSWORD;
 
-ESP8266MQTTMesh mesh(FIRMWARE_ID, FIRMWARE_VER,
-                     networks, network_password, mesh_password,
-                     base_ssid, mqtt_server, mqtt_port, mesh_port,
-                     IN_TOPIC, OUT_TOPIC);
+ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt_server)
+                     .setVersion(FIRMWARE_VER, FIRMWARE_ID)
+                     .setMeshPassword(mesh_password)
+                     .build();
 
 #define ESP8266_LED 2
 

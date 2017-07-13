@@ -58,16 +58,19 @@ typedef struct {
 #define LAST_AP 5
 
 class ESP8266MQTTMesh {
-
+public:
+    class Builder;
 private:
-    unsigned int firmware_id;
+    const unsigned int firmware_id;
     const char   *firmware_ver;
     const char   **networks;
     const char   *network_password;
     const char   *mesh_password;
     const char   *base_ssid;
     const char   *mqtt_server;
-    const int    mqtt_port;
+    const char   *mqtt_username;
+    const char   *mqtt_password;
+    int          mqtt_port;
     const int    mesh_port;
     const char   *inTopic;
     const char   *outTopic;
@@ -158,6 +161,16 @@ private:
     void onAck(AsyncClient* c, size_t len, uint32_t time);
     void onTimeout(AsyncClient* c, uint32_t time);
     void onData(AsyncClient* c, void* data, size_t len);
+
+    ESP8266MQTTMesh(const char **networks, const char *network_password,
+                    const char *mqtt_server, int mqtt_port,
+                    const char *mqtt_username, const char *mqtt_password,
+                    const char *firmware_ver, int firmware_id,
+                    const char *mesh_password, const char *base_ssid, int mesh_port,
+#if ASYNC_TCP_SSL_ENABLED
+                    bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
+#endif
+                    const char *inTopic, const char *outTopic);
 public:
     ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
                     const char **networks, const char *network_password, const char *mesh_password,
@@ -168,11 +181,15 @@ public:
                     const uint8_t *mqtt_fingerprint = NULL,
                     bool mesh_secure = false
 #endif
-                    );
+                        ) __attribute__((deprecated));
+    
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
     void begin();
     void publish(const char *subtopic, const char *msg);
     bool connected();
     static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);
 };
+
+#include "ESP8266MQTTMeshBuilder.h"
+
 #endif //_ESP8266MQTTMESH_H_
