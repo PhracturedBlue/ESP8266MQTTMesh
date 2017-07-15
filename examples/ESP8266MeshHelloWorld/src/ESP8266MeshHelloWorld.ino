@@ -27,8 +27,8 @@ bool         mesh_secure      = MESH_SECURE;
 String ID  = String(ESP.getChipId());
 
 
-const char *out_topic = "esp8266-out/";
-const char *in_topic = "esp8266-in/";
+const char *out_topic = OUT_TOPIC;
+const char *in_topic = IN_TOPIC;
 
 
 

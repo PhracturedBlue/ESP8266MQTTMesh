@@ -70,6 +70,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
         networks(networks),
         network_password(network_password),
         mqtt_server(mqtt_server),
+        mqtt_port(mqtt_port),
         mqtt_username(mqtt_username),
         mqtt_password(mqtt_password),
         firmware_id(firmware_id),
@@ -86,31 +87,6 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
         outTopic(outTopic),
         espServer(mesh_port)
 {
-    int len = strlen(inTopic);
-    if (len > 16) {
-        dbgPrintln(EMMDBG_MSG, "Max inTopicLen == 16");
-        die();
-    }
-    if (inTopic[len-1] != '/') {
-        dbgPrintln(EMMDBG_MSG, "inTopic must end with '/'");
-        die();
-    }
-    len = strlen(outTopic);
-    if (len > 16) {
-        dbgPrintln(EMMDBG_MSG, "Max outTopicLen == 16");
-        die();
-    }
-    if (outTopic[len-1] != '/') {
-        dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
-        die();
-    }
-    if (mqtt_port == 0) {
-#if ASYNC_TCP_SSL_ENABLED
-        this->mqtt_port = mqtt_secure ? 8883 : 1883;
-#else
-        this->mqtt_port = 1883;
-#endif
-    }
 
     espClient[0] = new AsyncClient();
     mySSID[0] = 0;
@@ -147,6 +123,39 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
 }
 
 void ESP8266MQTTMesh::begin() {
+    int len = strlen(inTopic);
+    if (len > 16) {
+        dbgPrintln(EMMDBG_MSG, "Max inTopicLen == 16");
+        die();
+    }
+    if (inTopic[len-1] != '/') {
+        dbgPrintln(EMMDBG_MSG, "inTopic must end with '/'");
+        die();
+    }
+    len = strlen(outTopic);
+    if (len > 16) {
+        dbgPrintln(EMMDBG_MSG, "Max outTopicLen == 16");
+        die();
+    }
+    if (outTopic[len-1] != '/') {
+        dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
+        die();
+    }
+    if (mqtt_port == 0) {
+#if ASYNC_TCP_SSL_ENABLED
+        mqtt_port = mqtt_secure ? 8883 : 1883;
+#else
+        mqtt_port = 1883;
+#endif
+    }
+    //dbgPrintln(EMMDBG_MSG, "Server: " + mqtt_server);
+    //dbgPrintln(EMMDBG_MSG, "Port: " + String(mqtt_port));
+    //dbgPrintln(EMMDBG_MSG, "User: " + mqtt_username ? mqtt_username : "None");
+    //dbgPrintln(EMMDBG_MSG, "PW: " + mqtt_password? mqtt_password : "None");
+    //dbgPrintln(EMMDBG_MSG, "Secure: " + mqtt_secure ? "True" : "False");
+    //dbgPrintln(EMMDBG_MSG, "Mesh: " + mesh_secure ? "True" : "False");
+    //dbgPrintln(EMMDBG_MSG, "Port: " + String(mesh_port));
+
     dbgPrintln(EMMDBG_MSG_EXTRA, "Starting Firmware " + String(firmware_id, HEX) + " : " + String(firmware_ver));
 #if HAS_OTA
     dbgPrintln(EMMDBG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
@@ -446,7 +455,7 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
 
 
 void ESP8266MQTTMesh::connect_mqtt() {
-    dbgPrintln(EMMDBG_MQTT, "Attempting MQTT connection...");
+    dbgPrintln(EMMDBG_MQTT, "Attempting MQTT connection (" + mqtt_server + ":" + String(mqtt_port) + ")...");
     // Attempt to connect
     mqttClient.connect();
 }
@@ -890,7 +899,8 @@ void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
 }
 
 void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
-    dbgPrintln(EMMDBG_MQTT, "Disconnected from MQTT.");
+    int r = (int8_t)reason;
+    dbgPrintln(EMMDBG_MQTT, "Disconnected from MQTT: " + String(r));
 #if ASYNC_TCP_SSL_ENABLED
     if (reason == AsyncMqttClientDisconnectReason::TLS_BAD_FINGERPRINT) {
         dbgPrintln(EMMDBG_MQTT, "Bad MQTT server fingerprint.");
