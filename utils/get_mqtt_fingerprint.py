@@ -40,6 +40,8 @@ else:
     print("INFO: Found signature algorithm: " + ", ".join(matches))
     if "rsa_sha512" in matches:
         print("ERROR: MQTT broker is using a sha512 signature which will not work with ESP8266")
+    if "rsa_sha384" in matches:
+        print("ERROR: MQTT broker is using a sha384 signature which will not work with ESP8266")
 
 sha1 = hashlib.sha1(cert_der).hexdigest()
 
