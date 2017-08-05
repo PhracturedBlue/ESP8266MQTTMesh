@@ -77,6 +77,8 @@ private:
 #if HAS_OTA
     uint32_t freeSpaceStart;
     uint32_t freeSpaceEnd;
+    uint32_t nextErase;
+    uint32_t startTime;
 #endif
 #if ASYNC_TCP_SSL_ENABLED
     bool mqtt_secure;
@@ -133,6 +135,8 @@ private:
     void getMAC(IPAddress ip, uint8 *mac);
     void assign_subdomain();
     static void assign_subdomain(ESP8266MQTTMesh *e) { e->assign_subdomain(); };
+    void erase_sector();
+    static void erase_sector(ESP8266MQTTMesh *e) { e->erase_sector(); };
 
     WiFiEventHandler wifiConnectHandler;
     WiFiEventHandler wifiDisconnectHandler;

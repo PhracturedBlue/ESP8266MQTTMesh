@@ -717,6 +717,18 @@ bool ESP8266MQTTMesh::check_ota_md5() {
     return true;
 }
 
+void ESP8266MQTTMesh::erase_sector() {
+    int start = freeSpaceStart / FLASH_SECTOR_SIZE;
+    //erase flash area here
+    ESP.flashEraseSector(nextErase--);
+    if (nextErase >= start) {
+        schedule.once(0.0, erase_sector, this);
+    } else {
+        nextErase = 0;
+        dbgPrintln(EMMDBG_OTA, "Erase complete in " +  String((micros() - startTime) / 1000000.0, 6) + " seconds");
+    }
+}
+
 void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
     char *end;
     unsigned int id = strtoul(cmd,&end, 16);
@@ -748,15 +760,11 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
             dbgPrintln(EMMDBG_MSG, "Not enough space for firmware: " + String(ota_info.len) + " > " + String(freeSpaceEnd - freeSpaceStart));
             return;
         }
-        int end = (freeSpaceStart + ota_info.len + FLASH_SECTOR_SIZE - 1) & (~(FLASH_SECTOR_SIZE - 1));
-        //erase flash area here
+        uint32_t end = (freeSpaceStart + ota_info.len + FLASH_SECTOR_SIZE - 1) & (~(FLASH_SECTOR_SIZE - 1));
+        nextErase = end / FLASH_SECTOR_SIZE - 1;
+        startTime = micros();
         dbgPrintln(EMMDBG_OTA, "Erasing " + String((end - freeSpaceStart)/ FLASH_SECTOR_SIZE) + " sectors");
-        long t = micros();
-        for (int i = freeSpaceStart / FLASH_SECTOR_SIZE; i < end / FLASH_SECTOR_SIZE; i++) {
-           ESP.flashEraseSector(i);
-           yield();
-        }
-        dbgPrintln(EMMDBG_OTA, "Erase complete in " +  String((micros() - t) / 1000000.0, 6) + " seconds");
+        schedule.once(0.0, erase_sector, this);
     }
     else if(0 == strcmp(cmd, "check")) {
         if (strlen(msg) > 0) {
@@ -821,7 +829,6 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         dbgPrintln(EMMDBG_OTA_EXTRA, "Got " + String(len) + " bytes FW @ " + String(address, HEX));
         bool ok = ESP.flashWrite(freeSpaceStart + address, (uint32_t*) data, len);
         dbgPrintln(EMMDBG_OTA, "Wrote " + String(len) + " bytes in " +  String((micros() - t) / 1000000.0, 6) + " seconds");
-        yield();
         if (! ok) {
             dbgPrintln(EMMDBG_MSG, "Failed to write firmware at " + String(freeSpaceStart + address, HEX) + " Length: " + String(len));
         }
