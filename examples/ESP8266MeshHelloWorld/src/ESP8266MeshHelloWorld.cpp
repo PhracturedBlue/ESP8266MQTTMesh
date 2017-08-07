@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include "credentials.h"
 #include <ESP8266WiFi.h>
 #include <ESP8266MQTTMesh.h>
