@@ -14,10 +14,8 @@
 const char*  networks[]       = NETWORK_LIST;
 const char*  network_password = NETWORK_PASSWORD;
 const char*  mesh_password    = MESH_PASSWORD;
-const char*  base_ssid        = BASE_SSID;
 const char*  mqtt_server      = MQTT_SERVER;
 const int    mqtt_port        = MQTT_PORT;
-const int    mesh_port        = MESH_PORT;
 #if ASYNC_TCP_SSL_ENABLED
 const uint8_t *mqtt_fingerprint = MQTT_FINGERPRINT;
 bool         mqtt_secure      = MQTT_SECURE;
@@ -27,23 +25,17 @@ bool         mesh_secure      = MESH_SECURE;
 String ID  = String(ESP.getChipId());
 
 
-const char *out_topic = OUT_TOPIC;
-const char *in_topic = IN_TOPIC;
-
-
 
 
 unsigned long previousMillis = 0;
 const long interval = 5000;
 int cnt = 0;
 
-
+// Note: All of the '.set' options below are optional.  The default values can be
+// found in ESP8266MQTTMeshBuilder.h
 ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt_server, mqtt_port)
                        .setVersion(FIRMWARE_VER, FIRMWARE_ID)
                        .setMeshPassword(mesh_password)
-                       .setBaseSSID(base_ssid)
-                       .setMeshPort(mesh_port)
-                       .setTopic(in_topic, out_topic)
 #if ASYNC_TCP_SSL_ENABLED
                        .setMqttSSL(mqtt_secure, mqtt_fingerprint)
                        .setMeshSSL(mesh_secure)
