@@ -103,5 +103,31 @@ public:
             inTopic,
             outTopic));
     }
+    ESP8266MQTTMesh *buildptr() {
+        return( new ESP8266MQTTMesh(
+            networks,
+            network_password,
+
+            mqtt_server,
+            mqtt_port,
+            mqtt_username,
+            mqtt_password,
+
+            firmware_ver,
+            firmware_id,
+
+            mesh_password,
+            base_ssid,
+            mesh_port,
+
+#if ASYNC_TCP_SSL_ENABLED
+            mqtt_secure,
+            mqtt_fingerprint,
+            mesh_secure,
+#endif
+
+            inTopic,
+            outTopic));
+    }
 };
 #endif //_ESP8266MQTTMESHBUILDER_H_
