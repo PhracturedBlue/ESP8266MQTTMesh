@@ -359,6 +359,10 @@ void ESP8266MQTTMesh::connect() {
     lastReconnect = millis();
     if (scanning || ap_idx >= LAST_AP ||  ap[ap_idx].ssid_idx == NETWORK_LAST_INDEX) {
         scan();
+        if (ap_idx >= LAST_AP) {
+            // We got a disconnect during scan, we've been rescheduled already
+            return;
+        }
     } if (scanning) {
         schedule_connect(0.5);
         return;
@@ -369,6 +373,8 @@ void ESP8266MQTTMesh::connect() {
         return;
     }    
     for (int i = 0; i < LAST_AP; i++) {
+        if (ap[i].ssid_idx == NETWORK_LAST_INDEX)
+            break;
         dbgPrintln(EMMDBG_WIFI, String(i) + String(i == ap_idx ? " * " : "   ") + String(ap[i].bssid) + " " + String(ap[i].rssi));
     }
     char ssid[64];

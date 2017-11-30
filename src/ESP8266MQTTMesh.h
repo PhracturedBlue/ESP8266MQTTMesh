@@ -86,7 +86,7 @@ private:
     const uint8_t *mqtt_fingerprint;
 #endif
     AsyncServer     espServer;
-    AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1];
+    AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1] = {0};
     uint8           espMAC[ESP8266_NUM_CLIENTS+1][6];
     AsyncMqttClient mqttClient;
 
