@@ -141,6 +141,10 @@ void ESP8266MQTTMesh::begin() {
         dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
         die();
     }
+    if (strlen(base_ssid) > 16) {
+        dbgPrintln(EMMDBG_MSG, "Max base_ssid len == 16");
+        die();
+    }
     if (mqtt_port == 0) {
 #if ASYNC_TCP_SSL_ENABLED
         mqtt_port = mqtt_secure ? 8883 : 1883;

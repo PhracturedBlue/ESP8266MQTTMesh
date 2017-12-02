@@ -95,7 +95,7 @@ private:
     int retry_connect;
     ap_t ap[LAST_AP];
     int ap_idx = 0;
-    char mySSID[16];
+    char mySSID[20];
     char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE];
     char *bufptr[ESP8266_NUM_CLIENTS+1];
     long lastMsg = 0;
