@@ -128,6 +128,8 @@ private:
     bool send_message(int index, const char *topicOrMsg, const char *msg = NULL);
     void send_messages();
     void broadcast_message(const char *topicOrMsg, const char *msg = NULL);
+    void get_fw_string(char *msg, int len, const char *prefix);
+    void handle_fw(const char *cmd);
     void handle_ota(const char *cmd, const char *msg);
     ota_info_t parse_ota_info(const char *str);
     bool check_ota_md5();

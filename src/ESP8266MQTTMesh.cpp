@@ -449,6 +449,10 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
 #endif
       return;
   }
+  else if (strstr(subtopic ,"fw/") == subtopic) {
+      const char *cmd = subtopic + 3;
+      handle_fw(cmd);
+  }
   if (! callback) {
       return;
   }
@@ -668,6 +672,34 @@ bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int 
   return false;
 }
 
+void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
+{
+    char id[9];
+    itoa(firmware_id, id, 16);
+    strlcpy(msg, prefix, len);
+    if (strlen(prefix)) {
+        strlcat(msg, " ", len);
+    }
+    strlcat(msg, "FW: ", len);
+    strlcat(msg, id, len);
+    strlcat(msg, " : ", len);
+    strlcat(msg, firmware_ver, len);
+}
+
+void ESP8266MQTTMesh::handle_fw(const char *cmd) {
+    int len;
+    if(strstr(cmd, mySSID) == cmd) {
+        len = strlen(mySSID);
+    } else if (strstr(cmd, "broadcast") == cmd) {
+        len = 9;
+    } else {
+        return;
+    }
+    char msg[64];
+    get_fw_string(msg, sizeof(msg), "");
+    publish("fw", msg);
+}
+
 ota_info_t ESP8266MQTTMesh::parse_ota_info(const char *str) {
     ota_info_t ota_info;
     memset (&ota_info, 0, sizeof(ota_info));
@@ -740,15 +772,18 @@ void ESP8266MQTTMesh::erase_sector() {
 }
 
 void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
-    char *end;
-    unsigned int id = strtoul(cmd,&end, 16);
-
     dbgPrintln(EMMDBG_OTA_EXTRA, "OTA cmd " + String(cmd) + " Length: " + String(strlen(msg)));
-    if (id != firmware_id || *end != '/') {
-        dbgPrintln(EMMDBG_OTA, "Ignoring OTA because firmwareID did not match " + String(firmware_id, HEX));
-        return;
+    if(strstr(cmd, mySSID) == cmd) {
+        cmd += strlen(mySSID);
+    } else {
+        char *end;
+        unsigned int id = strtoul(cmd,&end, 16);
+        if (id != firmware_id || *end != '/') {
+            dbgPrintln(EMMDBG_OTA, "Ignoring OTA because firmwareID did not match " + String(firmware_id, HEX));
+            return;
+        }
+        cmd += (end - cmd) + 1; //skip ID
     }
-    cmd += (end - cmd) + 1; //skip ID
     if(0 == strcmp(cmd, "start")) {
         dbgPrintln(EMMDBG_OTA_EXTRA, "OTA Start");
         ota_info_t ota_info = parse_ota_info(msg);
@@ -892,12 +927,7 @@ void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
     dbgPrintln(EMMDBG_MQTT, "MQTT Connected");
     // Once connected, publish an announcement...
     char msg[64];
-    char id[9];
-    itoa(firmware_id, id, 16);
-    strlcpy(msg, "Connected FW: ", sizeof(msg));
-    strlcat(msg, id, sizeof(msg));
-    strlcat(msg, " : ", sizeof(msg));
-    strlcat(msg, firmware_ver, sizeof(msg));
+    get_fw_string(msg, sizeof(msg), "Connected");
     //strlcpy(publishMsg, outTopic, sizeof(publishMsg));
     //strlcat(publishMsg, WiFi.localIP().toString().c_str(), sizeof(publishMsg));
     mqttClient.publish("connect", 0, false, msg);
