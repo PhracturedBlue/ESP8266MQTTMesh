@@ -21,7 +21,7 @@
 #define GREEN_LED   15 //MTDO
 #define RELAY       12 //MTDI
 #define BUTTON       0 //GPIO0
-//#define DS18B20      2 //GPIO2
+#define DS18B20      2 //GPIO2
 #define HLW8012_SEL  5 //GPIO5
 #define HLW8012_CF  14 //MTMS
 #define HLW8012_CF1 13 //MTCK
@@ -52,7 +52,7 @@
     #define      FIRMWARE_ID        0x4452
 #endif
 
-#define      FIRMWARE_VER       "0.8"
+#define      FIRMWARE_VER       "0.8.1"
 const char*  networks[]       = NETWORK_LIST;
 const char*  network_password = NETWORK_PASSWORD;
 const char*  mesh_password    = MESH_PASSWORD;
@@ -93,6 +93,7 @@ ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt
                      .build();
 
 bool relayState = false;
+bool stateChanged = false;
 int  heartbeat  = 60000;
 float temperature = 0.0;
 
@@ -185,14 +186,17 @@ void loop() {
         if(pressed == 0) {
             relayState = ! relayState;
             digitalWrite(RELAY, relayState);
-            save_config();
-            needToSend = true;
+            stateChanged = true;
         }
         pressed = now;
     } else if (pressed && now - pressed > 100) {
         pressed = 0;
     }
-    if (now - lastSend > heartbeat) {
+    if (stateChanged) {
+        save_config();
+        needToSend = true;
+        stateChanged = false;
+    } else if (now - lastSend > heartbeat) {
         needToSend = true;
     }
     if (! mesh.connected()) {
@@ -218,6 +222,14 @@ void callback(const char *topic, const char *msg) {
        if (hb > 10000) {
            heartbeat = hb;
            save_config();
+       }
+    }
+    else if (0 == strcmp(topic, "state")) {
+       bool nextState = strtoul(msg, NULL, 10) ? true : false;
+       if (relayState != nextState) {
+           relayState = nextState;
+           digitalWrite(RELAY, relayState);
+           stateChanged = true;
        }
     }
 #if HAS_HLW8012
