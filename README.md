@@ -25,9 +25,8 @@ broker to all nodes, but only nodes with a matching ID will update.
 This library has been converted to use Asynchronous communication for imroved reliability.  It requires the following libraries to be installed
 * AsyncMqttClient
 * ESPAsyncTCP
-
-If SSL support is required, the development (staging) branch of the esp8266 library is also needed.
-If using platformio, this can be installed via these [instructions](http://docs.platformio.org/en/latest/platforms/espressif8266.html#using-arduino-framework-with-staging-version).
+* Development (staging) branch of esp8266 library
+  (If using platformio, this can be installed via these [instructions](http://docs.platformio.org/en/latest/platforms/espressif8266.html#using-arduino-framework-with-staging-version)).
 
 **NOTE:** Enabling SSL will add ~70kB to the firmware size, and may make it impossible to use OTA updates depending on firmware and flash size.
 
