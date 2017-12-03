@@ -27,6 +27,10 @@ extern "C" {
   extern uint32_t _SPIFFS_start;
 }
 
+#ifndef pgm_read_with_offset //Requires Arduino core 2.4.0
+    #error "This version of the ESP8266 library is not supported"
+#endif
+
 enum {
     NETWORK_LAST_INDEX = -2,
     NETWORK_MESH_NODE  = -1,
@@ -39,12 +43,7 @@ enum {
     #define IS_GATEWAY (1)
 #endif
 
-#ifndef STAILQ_NEXT //HAS_ESP8266_24
-#define NEXT_STATION(station_list)  station_list->next
-#else
 #define NEXT_STATION(station_list) STAILQ_NEXT(station_list, next)
-//#error "This version of the ESP8266 library is not supported"
-#endif
 
 //#define EMMDBG_LEVEL (EMMDBG_WIFI | EMMDBG_MQTT | EMMDBG_OTA)
 #ifndef EMMDBG_LEVEL
