@@ -40,9 +40,9 @@ with open(stacktrace, "r") as fh:
                    #print("Ignoring: %s (%08x, %08x)" %  (addr, start, end))
                    continue
                for i in range(0, len(funcs)):
-                   if funcs[i][0] < add:
+                   if funcs[i][0] <= add:
                        continue
-                   print("%s : %s" % (addr, funcs[i][1]))
+                   print("%s : %s" % (addr, funcs[i-1][1]))
                    break
 
 
