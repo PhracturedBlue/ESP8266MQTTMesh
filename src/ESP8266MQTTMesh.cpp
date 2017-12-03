@@ -43,6 +43,7 @@ enum {
 #define NEXT_STATION(station_list)  station_list->next
 #else
 #define NEXT_STATION(station_list) STAILQ_NEXT(station_list, next)
+#error "This version of the ESP8266 library is not supported"
 #endif
 
 //#define EMMDBG_LEVEL (EMMDBG_WIFI | EMMDBG_MQTT | EMMDBG_OTA)
