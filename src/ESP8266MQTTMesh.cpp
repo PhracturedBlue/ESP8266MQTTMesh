@@ -51,10 +51,12 @@ enum {
 #endif
 
 #define dbgPrintln(lvl, msg) if (((lvl) & (EMMDBG_LEVEL)) == (lvl)) Serial.println("[" + String(__FUNCTION__) + "] " + msg)
-size_t strlcat (char *dst, const char *src, size_t len) {
+size_t mesh_strlcat (char *dst, const char *src, size_t len) {
     size_t slen = strlen(dst);
     return strlcpy(dst + slen, src, len - slen);
 }
+#define strlcat mesh_strlcat
+
 
 
 ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_password,
