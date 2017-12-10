@@ -324,9 +324,19 @@ void ESP8266MQTTMesh::scan() {
                 }
             }
         } else {
-            if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
-                dbgPrintln(EMMDBG_WIFI, "Failed to match BSSID");
-                continue;
+            for(network_idx = 0; networks[network_idx] != NULL && networks[network_idx][0] != 0; network_idx++) {
+                if(strcmp(WiFi.BSSIDstr(i).c_str(), networks[network_idx]) == 0) {
+                    dbgPrintln(EMMDBG_WIFI, "Matched");
+                    found = true;
+                    break;
+                }
+            }
+            if (! found) {
+                network_idx = NETWORK_MESH_NODE;
+                if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
+                    dbgPrintln(EMMDBG_WIFI, "Failed to match BSSID");
+                    continue;
+                }
             }
         }
         dbgPrintln(EMMDBG_WIFI, "RSSI: " + String(WiFi.RSSI(i)));
