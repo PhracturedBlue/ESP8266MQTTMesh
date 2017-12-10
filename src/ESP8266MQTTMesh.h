@@ -45,6 +45,10 @@
   #define ESP8266_NUM_CLIENTS 4
 #endif
 
+#ifndef USE_EXTENDED_NETWORKS
+  #define USE_EXTENDED_NETWORKS 0
+#endif
+
 typedef struct {
     unsigned int len;
     byte         md5[16];
@@ -57,14 +61,25 @@ typedef struct {
 } ap_t;
 #define LAST_AP 5
 
+#if USE_EXTENDED_NETWORKS
+typedef struct {
+    const char *ssid;
+    const char *bssid;
+    bool hidden;
+} wifi_conn;
+#else
+  #define wifi_conn char *
+#endif
+
 class ESP8266MQTTMesh {
 public:
     class Builder;
 private:
     const unsigned int firmware_id;
     const char   *firmware_ver;
-    const char   **networks;
+    const wifi_conn *networks;
     const char   *network_password;
+
     const char   *mesh_password;
     const char   *base_ssid;
     const char   *mqtt_server;
@@ -113,6 +128,7 @@ private:
     void die() { while(1) {} }
 
     bool match_bssid(const char *bssid);
+    int match_networks(const char *ssid, const char *bssid);
     void scan();
     void connect();
     static void connect(ESP8266MQTTMesh *e) { e->connect(); };
@@ -168,7 +184,7 @@ private:
     void onTimeout(AsyncClient* c, uint32_t time);
     void onData(AsyncClient* c, void* data, size_t len);
 
-    ESP8266MQTTMesh(const char **networks, const char *network_password,
+    ESP8266MQTTMesh(const wifi_conn *networks, const char *network_password,
                     const char *mqtt_server, int mqtt_port,
                     const char *mqtt_username, const char *mqtt_password,
                     const char *firmware_ver, int firmware_id,
@@ -179,7 +195,7 @@ private:
                     const char *inTopic, const char *outTopic);
 public:
     ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
-                    const char **networks, const char *network_password, const char *mesh_password,
+                    const wifi_conn *networks, const char *network_password, const char *mesh_password,
                     const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
                     const char *inTopic, const char *outTopic
 #if ASYNC_TCP_SSL_ENABLED

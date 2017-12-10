@@ -3,7 +3,7 @@
 
 class ESP8266MQTTMesh::Builder {
 private:
-    const char   **networks;
+    const wifi_conn *networks;
     const char   *network_password;
 
     const char   *mqtt_server;
@@ -27,7 +27,7 @@ private:
 #endif
 
 public:
-    Builder(const char   **networks,
+    Builder(const wifi_conn *networks,
             const char   *network_password,
             const char   *mqtt_server,
             int          mqtt_port = 0):

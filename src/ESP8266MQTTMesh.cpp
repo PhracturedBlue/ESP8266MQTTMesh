@@ -59,7 +59,7 @@ size_t mesh_strlcat (char *dst, const char *src, size_t len) {
 
 
 
-ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_password,
+ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks, const char *network_password,
                     const char *mqtt_server, int mqtt_port,
                     const char *mqtt_username, const char *mqtt_password,
                     const char *firmware_ver, int firmware_id,
@@ -102,7 +102,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const char **networks, const char *network_pass
 }
 
 ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
-                                 const char **networks, const char *network_password, const char *mesh_password,
+                                 const wifi_conn *networks, const char *network_password, const char *mesh_password,
                                  const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
                                  const char *inTopic,   const char *outTopic
 #if ASYNC_TCP_SSL_ENABLED
@@ -294,53 +294,23 @@ void ESP8266MQTTMesh::scan() {
     int ssid_idx;
     for(int i = 0; i < numberOfNetworksFound; i++) {
         bool found = false;
-        char ssid[32];
         int network_idx = NETWORK_MESH_NODE;
-        strlcpy(ssid, WiFi.SSID(i).c_str(), sizeof(ssid));
-        dbgPrintln(EMMDBG_WIFI, "Found SSID: '" + String(ssid) + "' BSSID '" + WiFi.BSSIDstr(i) + "'");
-        if (ssid[0] != 0) {
-            if (IS_GATEWAY) {
-            for(network_idx = 0; networks[network_idx] != NULL && networks[network_idx][0] != 0; network_idx++) {
-                if(strcmp(ssid, networks[network_idx]) == 0) {
-                    dbgPrintln(EMMDBG_WIFI, "Matched");
-                    found = true;
-                    break;
-                }
-            }
-            }
-            if(! found) {
+        int rssi = WiFi.RSSI(i);
+        dbgPrintln(EMMDBG_WIFI, "Found SSID: '" + WiFi.SSID(i) + "' BSSID '" + WiFi.BSSIDstr(i) + "'" + "RSSI: " + String(rssi));
+        if (IS_GATEWAY) {
+            network_idx = match_networks(WiFi.SSID().c_str(), WiFi.BSSIDstr(i).c_str());
+        }
+        if(network_idx == NETWORK_MESH_NODE) {
+            if (! WiFi.SSID(i).length()) {
                 dbgPrintln(EMMDBG_WIFI, "Did not match SSID list");
                 continue;
-            }
-            if (0) {
-                FSInfo fs_info;
-                SPIFFS.info(fs_info);
-                if (fs_info.usedBytes !=0) {
-                    dbgPrintln(EMMDBG_WIFI, "Trying to match known BSSIDs for " + WiFi.BSSIDstr(i));
-                    if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
-                        dbgPrintln(EMMDBG_WIFI, "Failed to match BSSID");
-                        continue;
-                    }
-                }
-            }
-        } else {
-            for(network_idx = 0; networks[network_idx] != NULL && networks[network_idx][0] != 0; network_idx++) {
-                if(strcmp(WiFi.BSSIDstr(i).c_str(), networks[network_idx]) == 0) {
-                    dbgPrintln(EMMDBG_WIFI, "Matched");
-                    found = true;
-                    break;
-                }
-            }
-            if (! found) {
-                network_idx = NETWORK_MESH_NODE;
+            } else {
                 if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
                     dbgPrintln(EMMDBG_WIFI, "Failed to match BSSID");
                     continue;
                 }
             }
         }
-        dbgPrintln(EMMDBG_WIFI, "RSSI: " + String(WiFi.RSSI(i)));
-        int rssi = WiFi.RSSI(i);
         //sort by RSSI
         for(int j = 0; j < LAST_AP; j++) {
             if(ap[j].ssid_idx == NETWORK_LAST_INDEX ||
@@ -358,6 +328,39 @@ void ESP8266MQTTMesh::scan() {
             }
         }
     }
+}
+
+int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
+{
+#if USE_EXTENDED_NETWORKS
+    for(int idx = 0; networks[idx].ssid == NULL; idx++) {
+        if(networks[idx].bssid) {
+            if (strcmp(bssid, networks[idx].bssid) == 0) {
+                if (networks[idx].hidden && ssid[0] == 0) {
+                    //hidden network
+                    return idx;
+                }
+            } else {
+                //Didn't match requested bssid
+                continue;
+            }
+        }
+        if(ssid[0] != 0) {
+            if (! networks[idx].hidden && strcmp(ssid, networks[idx].ssid) == 0) {
+                //matched ssid (and bssid if needed)
+                return idx;
+            }
+        }
+    }
+#else
+    for(int idx = 0; networks[idx] != NULL && networks[idx][0] != 0; idx++) {
+        if(strcmp(ssid, networks[idx]) == 0) {
+            dbgPrintln(EMMDBG_WIFI, "Matched");
+            return idx;
+        }
+    }
+#endif
+    return NETWORK_MESH_NODE;
 }
 
 void ESP8266MQTTMesh::schedule_connect(float delay) {
@@ -411,7 +414,11 @@ void ESP8266MQTTMesh::connect() {
         strlcat(ssid, subdomain_c, sizeof(ssid));
         meshConnect = true;
     } else {
+#if USE_EXTENDED_NETWORKS
+        strlcpy(ssid, networks[ap[ap_idx].ssid_idx].ssid, sizeof(ssid));
+#else
         strlcpy(ssid, networks[ap[ap_idx].ssid_idx], sizeof(ssid));
+#endif
         meshConnect = false;
     }
     dbgPrintln(EMMDBG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + String(ap[ap_idx].bssid) + "'");
