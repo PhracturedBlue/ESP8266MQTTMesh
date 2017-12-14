@@ -8,10 +8,16 @@ import datetime
 import hashlib
 import base64
 import time
+import ssl
+
+    #def tls_set(ca_certs=None, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED,tls_version=ssl.PROTOCOL_TLS, ciphers=None)
+
 
 topic = "esp8266-"
 inTopic = topic + "in"
 outTopic = topic + "out"
+name=""
+passw=""
 
 def on_connect(client, userdata, flags, rc):
     print("Connected with result code "+str(rc))
@@ -26,12 +32,15 @@ def on_message(client, userdata, msg):
     print("%s   %-30s = %s" % (str(datetime.datetime.now()), msg.topic, str(msg.payload)));
 
 def main():
-    global inTopic, outTopic
+    global inTopic, outTopic, name, passw
     parser = argparse.ArgumentParser()
     parser.add_argument("--bin", help="Input file");
     parser.add_argument("--id", help="Firmware ID (n HEX)");
     parser.add_argument("--broker", help="MQTT broker");
     parser.add_argument("--port", help="MQTT broker port");
+    parser.add_argument("--user", help="MQTT broker user");
+    parser.add_argument("--passwd", help="MQTT broker password");
+    parser.add_argument("--ssl", help="MQTT broker SSL support");
     parser.add_argument("--topic", help="MQTT mesh topic base (default: {}".format(topic))
     parser.add_argument("--intopic", help="MQTT mesh in-topic (default: {}".format(inTopic))
     parser.add_argument("--outtopic", help="MQTT mesh out-topic (default: {}".format(outTopic))
@@ -64,7 +73,17 @@ def main():
         args.broker = "127.0.0.1"
     if not args.port:
         args.port = 1883
+
+    if args.user:
+       name = args.user
+    if args.passwd:
+       passw = args.passwd
+
     client = mqtt.Client()
+    if args.ssl:
+       client.tls_set(ca_certs=None, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED,tls_version=ssl.PROTOCOL_TLS, ciphers=None)
+    if (args.user) or (args.passwd):
+        client.username_pw_set(name,passw)
     client.on_connect = on_connect
     client.on_message = on_message
 
