@@ -10,8 +10,6 @@ import base64
 import time
 import ssl
 
-    #def tls_set(ca_certs=None, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED,tls_version=ssl.PROTOCOL_TLS, ciphers=None)
-
 
 topic = "esp8266-"
 inTopic = topic + "in"
