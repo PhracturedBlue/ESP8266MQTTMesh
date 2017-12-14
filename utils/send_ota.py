@@ -37,7 +37,7 @@ def main():
     parser.add_argument("--broker", help="MQTT broker");
     parser.add_argument("--port", help="MQTT broker port");
     parser.add_argument("--user", help="MQTT broker user");
-    parser.add_argument("--passwd", help="MQTT broker password");
+    parser.add_argument("--password", help="MQTT broker password");
     parser.add_argument("--ssl", help="MQTT broker SSL support");
     parser.add_argument("--topic", help="MQTT mesh topic base (default: {}".format(topic))
     parser.add_argument("--intopic", help="MQTT mesh in-topic (default: {}".format(inTopic))
@@ -74,13 +74,13 @@ def main():
 
     if args.user:
        name = args.user
-    if args.passwd:
-       passw = args.passwd
+    if args.password:
+       passw = args.password
 
     client = mqtt.Client()
     if args.ssl:
        client.tls_set(ca_certs=None, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED,tls_version=ssl.PROTOCOL_TLS, ciphers=None)
-    if (args.user) or (args.passwd):
+    if (args.user) or (args.password):
         client.username_pw_set(name,passw)
     client.on_connect = on_connect
     client.on_message = on_message
