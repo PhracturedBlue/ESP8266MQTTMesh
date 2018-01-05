@@ -49,6 +49,17 @@
   #define USE_EXTENDED_NETWORKS 0
 #endif
 
+enum MSG_TYPE {
+    MSG_TYPE_NONE = 0xFE,
+    MSG_TYPE_INVALID = 0xFF,
+    MSG_TYPE_QOS_0 = 10,
+    MSG_TYPE_QOS_1 = 11,
+    MSG_TYPE_QOS_2 = 12,
+    MSG_TYPE_RETAIN_QOS_0 = 13,
+    MSG_TYPE_RETAIN_QOS_1 = 14,
+    MSG_TYPE_RETAIN_QOS_2 = 15,
+};
+
 typedef struct {
     unsigned int len;
     byte         md5[16];
@@ -80,7 +91,7 @@ private:
     const wifi_conn *networks;
     const char   *network_password;
 
-    const char   *mesh_password;
+    char         mesh_password[64];
     const char   *base_ssid;
     const char   *mqtt_server;
     const char   *mqtt_username;
@@ -141,7 +152,8 @@ private:
     void handle_client_data(int idx, char *data);
     void parse_message(const char *topic, const char *msg);
     void mqtt_callback(const char* topic, const byte* payload, unsigned int length);
-    bool send_message(int index, const char *topicOrMsg, const char *msg = NULL);
+    uint16_t mqtt_publish(const char *topic, const char *msg, uint8_t msgType);
+    bool send_message(int index, const char *topicOrMsg, const char *msg = NULL, uint8_t msgType = MSG_TYPE_NONE);
     void send_messages();
     void broadcast_message(const char *topicOrMsg, const char *msg = NULL);
     void get_fw_string(char *msg, int len, const char *prefix);
@@ -207,7 +219,7 @@ public:
     
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
     void begin();
-    void publish(const char *subtopic, const char *msg);
+    void publish(const char *subtopic, const char *msg, uint8_t msgCmd = MSG_TYPE_NONE);
     bool connected();
     static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);
 };

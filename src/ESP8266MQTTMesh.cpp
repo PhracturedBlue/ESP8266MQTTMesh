@@ -17,6 +17,7 @@
 
 #include "ESP8266MQTTMesh.h"
 
+#define MESH_API_VER "001"
 
 #include "Base64.h"
 #include "eboot_command.h"
@@ -63,7 +64,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks, const char *network_
                     const char *mqtt_server, int mqtt_port,
                     const char *mqtt_username, const char *mqtt_password,
                     const char *firmware_ver, int firmware_id,
-                    const char *mesh_password, const char *base_ssid, int mesh_port,
+                    const char *_mesh_password, const char *base_ssid, int mesh_port,
 #if ASYNC_TCP_SSL_ENABLED
                     bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
 #endif
@@ -77,7 +78,6 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks, const char *network_
         mqtt_password(mqtt_password),
         firmware_id(firmware_id),
         firmware_ver(firmware_ver),
-        mesh_password(mesh_password),
         base_ssid(base_ssid),
         mesh_port(mesh_port),
 #if ASYNC_TCP_SSL_ENABLED
@@ -90,6 +90,8 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks, const char *network_
         espServer(mesh_port)
 {
 
+    strlcpy(mesh_password, _mesh_password, 64-strlen(MESH_API_VER));
+    strlcat(mesh_password, MESH_API_VER, 64);
     espClient[0] = new AsyncClient();
     mySSID[0] = 0;
 #if HAS_OTA
@@ -494,16 +496,16 @@ void ESP8266MQTTMesh::connect_mqtt() {
 }
 
 
-void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg) {
+void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg, uint8_t msgType) {
     char topic[64];
     strlcpy(topic, outTopic, sizeof(topic));
     strlcat(topic, mySSID, sizeof(topic));
     strlcat(topic, subtopic, sizeof(topic));
     dbgPrintln(EMMDBG_MQTT_EXTRA, "Sending: " + String(topic) + "=" + String(msg));
     if (! meshConnect) {
-        mqttClient.publish(topic, 0, false, msg);
+        mqtt_publish(topic, msg, msgType);
     } else {
-        send_message(0, topic, msg);
+        send_message(0, topic, msg, msgType);
     }
 }
 
@@ -605,10 +607,17 @@ void ESP8266MQTTMesh::assign_subdomain() {
     }
 }
 
-bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg) {
+bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
     int topicLen = strlen(topicOrMsg);
     int msgLen = 0;
     int len = topicLen;
+    char msgTypeStr[2];
+    if (msgType == 0) {
+        msgType = MSG_TYPE_INVALID;
+    }
+    msgTypeStr[0] = msgType;
+    msgTypeStr[1] = 0;
+    espClient[index]->write(msgTypeStr,1);
     espClient[index]->write(topicOrMsg);
     if (msg) {
         espClient[index]->write("=", 1);
@@ -646,8 +655,9 @@ void ESP8266MQTTMesh::send_bssids(int idx) {
 }
 
 
-void ESP8266MQTTMesh::handle_client_data(int idx, char *data) {
+void ESP8266MQTTMesh::handle_client_data(int idx, char *rawdata) {
             dbgPrintln(EMMDBG_MQTT, "Received: msg from " + espClient[idx]->remoteIP().toString() + " on " + (idx == 0 ? "STA" : "AP"));
+            const char *data = rawdata + (idx ? 1 : 0);
             dbgPrintln(EMMDBG_MQTT_EXTRA, "--> '" + String(data) + "'");
             char topic[64];
             const char *msg;
@@ -660,6 +670,7 @@ void ESP8266MQTTMesh::handle_client_data(int idx, char *data) {
                 broadcast_message(data);
                 parse_message(topic, msg);
             } else {
+                unsigned char msgType = rawdata[0];
                 if (strstr(topic,"/mesh_cmd")  == topic + strlen(topic) - 9) {
                     // We will handle this packet locally
                     if (0 == strcmp(msg, "request_bssid")) {
@@ -667,12 +678,32 @@ void ESP8266MQTTMesh::handle_client_data(int idx, char *data) {
                     }
                 } else {
                     if (! meshConnect) {
-                        mqttClient.publish(topic, 0, false, msg);
+                        mqtt_publish(topic, msg, msgType);
                     } else {
-                        send_message(0, data);
+                        send_message(0, data, NULL, msgType);
                     }
                 }
             }
+}
+
+uint16_t ESP8266MQTTMesh::mqtt_publish(const char *topic, const char *msg, uint8_t msgType)
+{
+    uint8_t qos = 0;
+    bool retain = false;
+    if (msgType == MSG_TYPE_RETAIN_QOS_0
+        || msgType == MSG_TYPE_RETAIN_QOS_1
+        || msgType == MSG_TYPE_RETAIN_QOS_2)
+    {
+        qos = msgType - MSG_TYPE_RETAIN_QOS_0;
+        retain = true;
+    }
+    else if(msgType == MSG_TYPE_QOS_0
+            || msgType == MSG_TYPE_QOS_1
+            || msgType == MSG_TYPE_QOS_2)
+    {
+        qos = msgType - MSG_TYPE_QOS_0;
+    }
+    mqttClient.publish(topic, qos, retain, msg);
 }
 
 bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int keylen, const char **value) {
