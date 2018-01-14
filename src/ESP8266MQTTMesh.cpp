@@ -618,7 +618,7 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
     msgTypeStr[0] = msgType;
     msgTypeStr[1] = 0;
     if (index == 0) {
-        # We only send the msgType upstream
+        //We only send the msgType upstream
         espClient[index]->write(msgTypeStr,1);
         espClient[index]->write(topicOrMsg);
     }
