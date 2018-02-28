@@ -13,7 +13,6 @@ private:
     const char   *mesh_ssid;
     const char   *mesh_password;
     int          mesh_port;
-    uint32_t     mesh_bssid_key;
 
     const char   *inTopic;
     const char   *outTopic;
@@ -24,6 +23,9 @@ private:
     bool mqtt_secure;
     bool mesh_secure;
     const uint8_t *mqtt_fingerprint;
+    void fix_mqtt_port() { if (! mqtt_port) mqtt_port = mqtt_secure ? 8883 : 1883; };
+#else
+    void fix_mqtt_port() { if (! mqtt_port) mqtt_port = 1883; };
 #endif
 
 public:
@@ -40,7 +42,6 @@ public:
        mesh_ssid("esp8266_mqtt_mesh"),
        mesh_password("ESP8266MQTTMesh"),
        mesh_port(1884),
-       mesh_bssid_key(0x118d5b), 
 #if ASYNC_TCP_SSL_ENABLED
        mqtt_secure(false),
        mqtt_fingerprint(NULL),
@@ -60,9 +61,9 @@ public:
         this->mqtt_password = password;
         return *this;
     }
+    Builder& setMeshSSID(const char *ssid) { this->mesh_ssid = ssid; return *this; }
     Builder& setMeshPassword(const char *password) { this->mesh_password = password; return *this; }
     Builder& setMeshPort(int port) { this->mesh_port = port; return *this; }
-    Builder& setMeshBSSIDKey(uint32_t key) { this->mesh_bssid_key = key; return *this; }
     Builder& setTopic(const char *inTopic, const char *outTopic) {
         this->inTopic = inTopic;
         this->outTopic = outTopic;
@@ -77,6 +78,7 @@ public:
     Builder & setMeshSSL(bool enable) { this->mesh_secure = enable; return *this; }
 #endif
     ESP8266MQTTMesh build() {
+        fix_mqtt_port();
         return( ESP8266MQTTMesh(
             networks,
 
@@ -91,7 +93,6 @@ public:
             mesh_ssid,
             mesh_password,
             mesh_port,
-            mesh_bssid_key,
 
 #if ASYNC_TCP_SSL_ENABLED
             mqtt_secure,
@@ -103,6 +104,7 @@ public:
             outTopic));
     }
     ESP8266MQTTMesh *buildptr() {
+        fix_mqtt_port();
         return( new ESP8266MQTTMesh(
             networks,
 
@@ -117,7 +119,6 @@ public:
             mesh_ssid,
             mesh_password,
             mesh_port,
-            mesh_bssid_key,
 
 #if ASYNC_TCP_SSL_ENABLED
             mqtt_secure,

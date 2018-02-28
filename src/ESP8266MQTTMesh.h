@@ -90,9 +90,9 @@ private:
     const char   *mqtt_server;
     const char   *mqtt_username;
     const char   *mqtt_password;
-    int          mqtt_port;
+    const int    mqtt_port;
     const int    mesh_port;
-    const uint32_t mesh_bssid_key;
+    uint32_t     mesh_bssid_key;
 
     const char   *inTopic;
     const char   *outTopic;
@@ -134,7 +134,7 @@ private:
     bool wifiConnected() { return (WiFi.status() == WL_CONNECTED); }
     void die() { while(1) {} }
 
-    uint32_t lfsr(uint32_t taps, uint32_t value);
+    uint32_t lfsr(uint32_t seed, uint8_t b);
     void generate_mac(uint8_t *bssid, uint32_t key, uint32_t id);
     bool verify_bssid(uint8_t *bssid, uint32_t key);
 
@@ -200,7 +200,6 @@ private:
                     const char *mqtt_username, const char *mqtt_password,
                     const char *firmware_ver, int firmware_id,
                     const char *mesh_ssid, const char *mesh_password, int mesh_port,
-                    uint32_t mesh_bssid_key,
 #if ASYNC_TCP_SSL_ENABLED
                     bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
 #endif
@@ -208,7 +207,8 @@ private:
 public:
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
     void begin();
-    void publish(const char *subtopic, const char *msg, uint8_t msgCmd = MSG_TYPE_NONE);
+    void publish(const char *subtopic, const char *msg, enum MSG_TYPE msgCmd = MSG_TYPE_NONE);
+    void publish_node(const char *subtopic, const char *msg, enum MSG_TYPE msgCmd = MSG_TYPE_NONE);
     bool connected();
     static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);
 };

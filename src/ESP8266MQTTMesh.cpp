@@ -64,7 +64,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
                     const char *mqtt_server, int mqtt_port,
                     const char *mqtt_username, const char *mqtt_password,
                     const char *firmware_ver, int firmware_id,
-                    const char *mesh_ssid, const char *_mesh_password, int mesh_port, uint32_t mesh_bssid_key,
+                    const char *mesh_ssid, const char *_mesh_password, int mesh_port,
 #if ASYNC_TCP_SSL_ENABLED
                     bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
 #endif
@@ -79,7 +79,6 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
         firmware_ver(firmware_ver),
         mesh_ssid(mesh_ssid),
         mesh_port(mesh_port),
-        mesh_bssid_key(mesh_bssid_key),
 #if ASYNC_TCP_SSL_ENABLED
         mqtt_secure(mqtt_secure),
         mqtt_fingerprint(mqtt_fingerprint),
@@ -92,6 +91,11 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
 
     strlcpy(mesh_password, _mesh_password, 64-strlen(MESH_API_VER));
     strlcat(mesh_password, MESH_API_VER, 64);
+    mesh_bssid_key = 0x118d5b; //Seed
+    for (int i = 0; mesh_password[i] != 0; i++) {
+        mesh_bssid_key = lfsr(mesh_bssid_key, mesh_password[i]);
+    }
+    mesh_bssid_key &= 0x3FFFFF; // limit to 22bits
     espClient[0] = new AsyncClient();
     itoa(ESP.getChipId(), myID, 16);
     strlcat(myID, "/", sizeof(myID));
@@ -126,13 +130,6 @@ void ESP8266MQTTMesh::begin() {
     if (outTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
         die();
-    }
-    if (mqtt_port == 0) {
-#if ASYNC_TCP_SSL_ENABLED
-        mqtt_port = mqtt_secure ? 8883 : 1883;
-#else
-        mqtt_port = 1883;
-#endif
     }
     //dbgPrintln(EMMDBG_MSG, "Server: " + mqtt_server);
     //dbgPrintln(EMMDBG_MSG, "Port: " + String(mqtt_port));
@@ -230,20 +227,21 @@ bool ESP8266MQTTMesh::isAPConnected(uint8 *mac) {
     return false;
 }
 
-uint32_t ESP8266MQTTMesh::lfsr(uint32_t taps, uint32_t value) {
-    // The LFSR is used to get a reasonable distribution of bits regardless of the initial value
+uint32_t ESP8266MQTTMesh::lfsr(uint32_t seed, uint8_t b)
+{
+    // Linear feedback shift register with 32-bit Xilinx polinomial x^32 + x^22 + x^2 + x + 1
+    // http://www.xilinx.com/support/documentation/application_notes/xapp052.pdf
+    static const uint32_t LFSR_FEEDBACK = 0x80200003ul;
+    static const uint32_t LFSR_INTAP = 32-1;
     for (int i = 0; i < 8; ++i) {
-        value = (value >> 1) ^ ((-(value & 1u) & taps));
+        seed = (seed >> 1) ^ ((-(seed & 1u) & LFSR_FEEDBACK) ^ ~((uint32_t)(b & 1) << LFSR_INTAP));
+        b >>= 1;
     }
-    return value;
+    return seed;
 }
 
 void ESP8266MQTTMesh::generate_mac(uint8_t *bssid, uint32_t key, uint32_t id) {
-    //http://www.xilinx.com/support/documentation/application_notes/xapp052.pdf
-    //0x300000 is the Xilinx tap for a 22bit value
-    //0xe10000 is the Xilinx tap for a 24bit value
-    key = lfsr(0x300000, 0x5AA55A ^ key) & 0x3FFFFF; // Generate pseudo-random 22bit value from key
-    id = lfsr(0xe10000, 0xA55Aa5 ^ id) & 0xFFFFFF;   // Genereate pseudo-random 24bit value from id
+    id = lfsr(0xA55A5AA5 ^ id, 0) & 0xFFFFFF;   // Genereate pseudo-random 24bit value from id
     // The lowest bits of the 1st octet need to be b'10 to indicate a
     // locally-administered unicast MAC address
     uint64_t value = (((uint64_t)key * (uint64_t)id) << 2) + 2;
@@ -253,13 +251,12 @@ void ESP8266MQTTMesh::generate_mac(uint8_t *bssid, uint32_t key, uint32_t id) {
 }
 
 bool ESP8266MQTTMesh::verify_bssid(uint8_t *bssid, uint32_t key) {
-    key = lfsr(0x300000, 0x5AA55A ^ key) & 0x3FFFFF; // Generate pseudo-random 22bit value from key
     uint64_t value = 0;
     for (int i = 0; i < 6; i++) {
         value |= ((uint64_t)bssid[i]) << (8*i);
     }
     value = (value >> 2) - 2;
-    return (value % key) ? true : false;
+    return (value % key) ? false : true;
 }
 
 void ESP8266MQTTMesh::getMAC(IPAddress ip, uint8 *mac) {
@@ -454,8 +451,12 @@ void ESP8266MQTTMesh::connect_mqtt() {
 }
 
 
-void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg, uint8_t msgType) {
-    publish(outTopic, myID, subtopic, msg, msgType);
+void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg, enum MSG_TYPE msgCmd) {
+    publish(outTopic, myID, subtopic, msg, msgCmd);
+}
+
+void ESP8266MQTTMesh::publish_node(const char *subtopic, const char *msg, enum MSG_TYPE msgCmd) {
+    publish(inTopic, myID, subtopic, msg, msgCmd);
 }
 
 void ESP8266MQTTMesh::publish(const char *topicDirection, const char *baseTopic, const char *subTopic, const char *msg, uint8_t msgType) {
