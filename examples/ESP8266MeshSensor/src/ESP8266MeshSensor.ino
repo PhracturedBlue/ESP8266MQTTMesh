@@ -26,7 +26,6 @@
 #define HLW8012_CF  14 //MTMS
 #define HLW8012_CF1 13 //MTCK
 
-
 /* See credentials.h.examle for contents of credentials.h */
 #include "credentials.h"
 #include "capabilities.h"
@@ -53,8 +52,12 @@
 #endif
 
 #define      FIRMWARE_VER       "0.8.1"
-const char*  networks[]       = NETWORK_LIST;
-const char*  network_password = NETWORK_PASSWORD;
+//const char*  networks[]       = NETWORK_LIST;
+const wifi_conn networks[] = {
+    WIFI_CONN("foo", NETWORK_PASSWORD, NULL, false),
+    WIFI_CONN("bar", NETWORK_PASSWORD, "XX:XX:XX:XX:XX:XX", true),
+    NULL
+};
 const char*  mesh_password    = MESH_PASSWORD;
 const char*  mqtt_server      = MQTT_SERVER;
 
@@ -87,7 +90,7 @@ double hlw8012_getCurrent();
 unsigned int hlw8012_getVoltage();
 #endif
 
-ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt_server)
+ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, mqtt_server)
                      .setVersion(FIRMWARE_VER, FIRMWARE_ID)
                      .setMeshPassword(mesh_password)
                      .build();

@@ -45,10 +45,6 @@
   #define ESP8266_NUM_CLIENTS 4
 #endif
 
-#ifndef USE_EXTENDED_NETWORKS
-  #define USE_EXTENDED_NETWORKS 0
-#endif
-
 enum MSG_TYPE {
     MSG_TYPE_NONE = 0xFE,
     MSG_TYPE_INVALID = 0xFF,
@@ -72,15 +68,14 @@ typedef struct {
 } ap_t;
 #define LAST_AP 5
 
-#if USE_EXTENDED_NETWORKS
 typedef struct {
     const char *ssid;
+    const char *password;
     const char *bssid;
     bool hidden;
 } wifi_conn;
-#else
-  #define wifi_conn char *
-#endif
+#define WIFI_CONN(ssid, password, bssid, hidden) \
+    { ssid, password, bssid, hidden }
 
 class ESP8266MQTTMesh {
 public:
@@ -89,15 +84,16 @@ private:
     const unsigned int firmware_id;
     const char   *firmware_ver;
     const wifi_conn *networks;
-    const char   *network_password;
 
+    const char   *mesh_ssid;
     char         mesh_password[64];
-    const char   *base_ssid;
     const char   *mqtt_server;
     const char   *mqtt_username;
     const char   *mqtt_password;
     int          mqtt_port;
     const int    mesh_port;
+    const uint32_t mesh_bssid_key;
+
     const char   *inTopic;
     const char   *outTopic;
 #if HAS_OTA
@@ -121,7 +117,7 @@ private:
     int retry_connect;
     ap_t ap[LAST_AP];
     int ap_idx = 0;
-    char mySSID[20];
+    char myID[10];
     char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE];
     char *bufptr[ESP8266_NUM_CLIENTS+1];
     long lastMsg = 0;
@@ -138,7 +134,10 @@ private:
     bool wifiConnected() { return (WiFi.status() == WL_CONNECTED); }
     void die() { while(1) {} }
 
-    bool match_bssid(const char *bssid);
+    uint32_t lfsr(uint32_t taps, uint32_t value);
+    void generate_mac(uint8_t *bssid, uint32_t key, uint32_t id);
+    bool verify_bssid(uint8_t *bssid, uint32_t key);
+
     int match_networks(const char *ssid, const char *bssid);
     void scan();
     void connect();
@@ -147,14 +146,14 @@ private:
     void connect_mqtt();
     void shutdown_AP();
     void setup_AP();
-    int read_subdomain(const char *fileName);
-    void send_bssids(int idx);
     void handle_client_data(int idx, char *data);
     void parse_message(const char *topic, const char *msg);
     void mqtt_callback(const char* topic, const byte* payload, unsigned int length);
     uint16_t mqtt_publish(const char *topic, const char *msg, uint8_t msgType);
+    void publish(const char *topicDirection, const char *baseTopic, const char *subTopic, const char *msg, uint8_t msgType);
     bool send_message(int index, const char *topicOrMsg, const char *msg = NULL, uint8_t msgType = MSG_TYPE_NONE);
     void send_messages();
+    void send_connected_msg();
     void broadcast_message(const char *topicOrMsg, const char *msg = NULL);
     void get_fw_string(char *msg, int len, const char *prefix);
     void handle_fw(const char *cmd);
@@ -196,27 +195,17 @@ private:
     void onTimeout(AsyncClient* c, uint32_t time);
     void onData(AsyncClient* c, void* data, size_t len);
 
-    ESP8266MQTTMesh(const wifi_conn *networks, const char *network_password,
+    ESP8266MQTTMesh(const wifi_conn *networks,
                     const char *mqtt_server, int mqtt_port,
                     const char *mqtt_username, const char *mqtt_password,
                     const char *firmware_ver, int firmware_id,
-                    const char *mesh_password, const char *base_ssid, int mesh_port,
+                    const char *mesh_ssid, const char *mesh_password, int mesh_port,
+                    uint32_t mesh_bssid_key,
 #if ASYNC_TCP_SSL_ENABLED
                     bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
 #endif
                     const char *inTopic, const char *outTopic);
 public:
-    ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
-                    const wifi_conn *networks, const char *network_password, const char *mesh_password,
-                    const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
-                    const char *inTopic, const char *outTopic
-#if ASYNC_TCP_SSL_ENABLED
-                    , bool mqtt_secure = false,
-                    const uint8_t *mqtt_fingerprint = NULL,
-                    bool mesh_secure = false
-#endif
-                        ) __attribute__((deprecated));
-    
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
     void begin();
     void publish(const char *subtopic, const char *msg, uint8_t msgCmd = MSG_TYPE_NONE);

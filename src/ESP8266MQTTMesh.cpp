@@ -60,26 +60,26 @@ size_t mesh_strlcat (char *dst, const char *src, size_t len) {
 
 
 
-ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks, const char *network_password,
+ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
                     const char *mqtt_server, int mqtt_port,
                     const char *mqtt_username, const char *mqtt_password,
                     const char *firmware_ver, int firmware_id,
-                    const char *_mesh_password, const char *base_ssid, int mesh_port,
+                    const char *mesh_ssid, const char *_mesh_password, int mesh_port, uint32_t mesh_bssid_key,
 #if ASYNC_TCP_SSL_ENABLED
                     bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
 #endif
                     const char *inTopic, const char *outTopic
                     ) :
         networks(networks),
-        network_password(network_password),
         mqtt_server(mqtt_server),
         mqtt_port(mqtt_port),
         mqtt_username(mqtt_username),
         mqtt_password(mqtt_password),
         firmware_id(firmware_id),
         firmware_ver(firmware_ver),
-        base_ssid(base_ssid),
+        mesh_ssid(mesh_ssid),
         mesh_port(mesh_port),
+        mesh_bssid_key(mesh_bssid_key),
 #if ASYNC_TCP_SSL_ENABLED
         mqtt_secure(mqtt_secure),
         mqtt_fingerprint(mqtt_fingerprint),
@@ -93,7 +93,8 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks, const char *network_
     strlcpy(mesh_password, _mesh_password, 64-strlen(MESH_API_VER));
     strlcat(mesh_password, MESH_API_VER, 64);
     espClient[0] = new AsyncClient();
-    mySSID[0] = 0;
+    itoa(ESP.getChipId(), myID, 16);
+    strlcat(myID, "/", sizeof(myID));
 #if HAS_OTA
     uint32_t usedSize = ESP.getSketchSize();
     // round one sector up
@@ -101,25 +102,6 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks, const char *network_
     //freeSpaceEnd = (uint32_t)&_SPIFFS_start - 0x40200000;
     freeSpaceEnd = ESP.getFreeSketchSpace() + freeSpaceStart;
 #endif
-}
-
-ESP8266MQTTMesh::ESP8266MQTTMesh(unsigned int firmware_id, const char *firmware_ver,
-                                 const wifi_conn *networks, const char *network_password, const char *mesh_password,
-                                 const char *base_ssid, const char *mqtt_server, int mqtt_port, int mesh_port,
-                                 const char *inTopic,   const char *outTopic
-#if ASYNC_TCP_SSL_ENABLED
-                                 , bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure
-#endif
-                                 ) :
-    ESP8266MQTTMesh(networks, network_password, mqtt_server, mqtt_port,
-                    NULL, NULL,
-                    firmware_ver, firmware_id,
-                    mesh_password, base_ssid, mesh_port,
-#if ASYNC_TCP_SSL_ENABLED
-                    mqtt_secure, mqtt_fingerprint, mesh_secure,
-#endif
-                    inTopic, outTopic)
-{
 }
 
 void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
@@ -143,10 +125,6 @@ void ESP8266MQTTMesh::begin() {
     }
     if (outTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
-        die();
-    }
-    if (strlen(base_ssid) > 16) {
-        dbgPrintln(EMMDBG_MSG, "Max base_ssid len == 16");
         die();
     }
     if (mqtt_port == 0) {
@@ -180,6 +158,10 @@ void ESP8266MQTTMesh::begin() {
     while(dir.next()) {
       dbgPrintln(EMMDBG_FS, " ==> '" + dir.fileName() + "'");
     }
+    uint8_t mac[6];
+    generate_mac(mac, mesh_bssid_key, ESP.getChipId());
+    wifi_set_macaddr(STATION_IF, const_cast<uint8*>(mac)); 
+
     WiFi.disconnect();
     // In the ESP8266 2.3.0 API, there seems to be a bug which prevents a node configured as
     // WIFI_AP_STA from openning a TCP connection to it's gateway if the gateway is also
@@ -248,6 +230,38 @@ bool ESP8266MQTTMesh::isAPConnected(uint8 *mac) {
     return false;
 }
 
+uint32_t ESP8266MQTTMesh::lfsr(uint32_t taps, uint32_t value) {
+    // The LFSR is used to get a reasonable distribution of bits regardless of the initial value
+    for (int i = 0; i < 8; ++i) {
+        value = (value >> 1) ^ ((-(value & 1u) & taps));
+    }
+    return value;
+}
+
+void ESP8266MQTTMesh::generate_mac(uint8_t *bssid, uint32_t key, uint32_t id) {
+    //http://www.xilinx.com/support/documentation/application_notes/xapp052.pdf
+    //0x300000 is the Xilinx tap for a 22bit value
+    //0xe10000 is the Xilinx tap for a 24bit value
+    key = lfsr(0x300000, 0x5AA55A ^ key) & 0x3FFFFF; // Generate pseudo-random 22bit value from key
+    id = lfsr(0xe10000, 0xA55Aa5 ^ id) & 0xFFFFFF;   // Genereate pseudo-random 24bit value from id
+    // The lowest bits of the 1st octet need to be b'10 to indicate a
+    // locally-administered unicast MAC address
+    uint64_t value = (((uint64_t)key * (uint64_t)id) << 2) + 2;
+    for (int i = 0; i < 6; i++) {
+        bssid[i] = (value >> (8 * i)) & 0xff;
+    }
+}
+
+bool ESP8266MQTTMesh::verify_bssid(uint8_t *bssid, uint32_t key) {
+    key = lfsr(0x300000, 0x5AA55A ^ key) & 0x3FFFFF; // Generate pseudo-random 22bit value from key
+    uint64_t value = 0;
+    for (int i = 0; i < 6; i++) {
+        value |= ((uint64_t)bssid[i]) << (8*i);
+    }
+    value = (value >> 2) - 2;
+    return (value % key) ? true : false;
+}
+
 void ESP8266MQTTMesh::getMAC(IPAddress ip, uint8 *mac) {
     struct station_info *station_list = wifi_softap_get_station_info();
     while (station_list != NULL) {
@@ -262,14 +276,6 @@ void ESP8266MQTTMesh::getMAC(IPAddress ip, uint8 *mac) {
 
 bool ESP8266MQTTMesh::connected() {
     return wifiConnected() && ((meshConnect && espClient[0] && espClient[0]->connected()) || mqttClient.connected());
-}
-
-bool ESP8266MQTTMesh::match_bssid(const char *bssid) {
-    char filename[32];
-    dbgPrintln(EMMDBG_WIFI, "Trying to match known BSSIDs for " + String(bssid));
-    strlcpy(filename, "/bssid/", sizeof(filename));
-    strlcat(filename, bssid, sizeof(filename));
-    return SPIFFS.exists(filename);
 }
 
 void ESP8266MQTTMesh::scan() {
@@ -300,14 +306,14 @@ void ESP8266MQTTMesh::scan() {
         int rssi = WiFi.RSSI(i);
         dbgPrintln(EMMDBG_WIFI, "Found SSID: '" + WiFi.SSID(i) + "' BSSID '" + WiFi.BSSIDstr(i) + "'" + "RSSI: " + String(rssi));
         if (IS_GATEWAY) {
-            network_idx = match_networks(WiFi.SSID().c_str(), WiFi.BSSIDstr(i).c_str());
+            network_idx = match_networks(WiFi.SSID(i).c_str(), WiFi.BSSIDstr(i).c_str());
         }
         if(network_idx == NETWORK_MESH_NODE) {
-            if (! WiFi.SSID(i).length()) {
+            if (WiFi.SSID(i).length()) {
                 dbgPrintln(EMMDBG_WIFI, "Did not match SSID list");
                 continue;
             } else {
-                if (! match_bssid(WiFi.BSSIDstr(i).c_str())) {
+                if (! verify_bssid(WiFi.BSSID(i), mesh_bssid_key)) {
                     dbgPrintln(EMMDBG_WIFI, "Failed to match BSSID");
                     continue;
                 }
@@ -334,12 +340,12 @@ void ESP8266MQTTMesh::scan() {
 
 int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
 {
-#if USE_EXTENDED_NETWORKS
     for(int idx = 0; networks[idx].ssid == NULL; idx++) {
         if(networks[idx].bssid) {
             if (strcmp(bssid, networks[idx].bssid) == 0) {
                 if (networks[idx].hidden && ssid[0] == 0) {
                     //hidden network
+                    dbgPrintln(EMMDBG_WIFI, "Matched");
                     return idx;
                 }
             } else {
@@ -350,18 +356,11 @@ int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
         if(ssid[0] != 0) {
             if (! networks[idx].hidden && strcmp(ssid, networks[idx].ssid) == 0) {
                 //matched ssid (and bssid if needed)
+                dbgPrintln(EMMDBG_WIFI, "Matched");
                 return idx;
             }
         }
     }
-#else
-    for(int idx = 0; networks[idx] != NULL && networks[idx][0] != 0; idx++) {
-        if(strcmp(ssid, networks[idx]) == 0) {
-            dbgPrintln(EMMDBG_WIFI, "Matched");
-            return idx;
-        }
-    }
-#endif
     return NETWORK_MESH_NODE;
 }
 
@@ -398,34 +397,19 @@ void ESP8266MQTTMesh::connect() {
             break;
         dbgPrintln(EMMDBG_WIFI, String(i) + String(i == ap_idx ? " * " : "   ") + String(ap[i].bssid) + " " + String(ap[i].rssi));
     }
-    char ssid[64];
+    const char *ssid;
+    const char *password;
     if (ap[ap_idx].ssid_idx == NETWORK_MESH_NODE) {
         //This is a mesh node
-        char subdomain_c[8];
-        char filename[32];
-        strlcpy(filename, "/bssid/", sizeof(filename));
-        strlcat(filename, ap[ap_idx].bssid, sizeof(filename));
-        int subdomain = read_subdomain(filename);
-        if (subdomain == -1) {
-            ap_idx++;
-            schedule_connect();
-            return;
-        }
-        itoa(subdomain, subdomain_c, 10);
-        strlcpy(ssid, base_ssid, sizeof(ssid));
-        strlcat(ssid, subdomain_c, sizeof(ssid));
+        ssid = mesh_ssid;
+        password = mesh_password;
         meshConnect = true;
     } else {
-#if USE_EXTENDED_NETWORKS
-        strlcpy(ssid, networks[ap[ap_idx].ssid_idx].ssid, sizeof(ssid));
-#else
-        strlcpy(ssid, networks[ap[ap_idx].ssid_idx], sizeof(ssid));
-#endif
+        ssid = networks[ap[ap_idx].ssid_idx].ssid;
+        password = networks[ap[ap_idx].ssid_idx].password;
         meshConnect = false;
     }
     dbgPrintln(EMMDBG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + String(ap[ap_idx].bssid) + "'");
-    const char *password = meshConnect ? mesh_password : network_password;
-    //WiFi.begin(ssid.c_str(), password.c_str(), 0, WiFi.BSSID(best_match), true);
     WiFi.begin(ssid, password);
     connecting = true;
     lastStatus = lastReconnect;
@@ -437,33 +421,7 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
       return;
   }
   const char *subtopic = topic + inTopicLen;
-  if (strstr(subtopic,"bssid/") == subtopic) {
-      const char *bssid = subtopic + 6;
-      char filename[32];
-      strlcpy(filename, "/bssid/", sizeof(filename));
-      strlcat(filename, bssid, sizeof(filename));
-      int idx = strtoul(msg, NULL, 10);
-      int subdomain = read_subdomain(filename);
-      if (subdomain == idx) {
-          // The new value matches the stored value
-          return;
-      }
-      File f = SPIFFS.open(filename, "w");
-      if (! f) {
-          dbgPrintln(EMMDBG_MQTT, "Failed to write /" + String(bssid));
-          return;
-      }
-      f.print(msg);
-      f.print("\n");
-      f.close();
-
-      if (strcmp(WiFi.softAPmacAddress().c_str(), bssid) == 0) {
-          shutdown_AP();
-          setup_AP();
-      }
-      return;
-  }
-  else if (strstr(subtopic ,"ota/") == subtopic) {
+  if (strstr(subtopic ,"ota/") == subtopic) {
 #if HAS_OTA
       const char *cmd = subtopic + 4;
       handle_ota(cmd, msg);
@@ -477,10 +435,10 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   if (! callback) {
       return;
   }
-  int mySSIDLen = strlen(mySSID);
-  if(strstr(subtopic, mySSID) == subtopic) {
+  int myIDLen = strlen(myID);
+  if(strstr(subtopic, myID) == subtopic) {
       //Only handle messages addressed to this node
-      callback(subtopic + mySSIDLen, msg);
+      callback(subtopic + myIDLen, msg);
   }
   else if(strstr(subtopic, "broadcast/") == subtopic) {
       //Or messages sent to all nodes
@@ -497,10 +455,14 @@ void ESP8266MQTTMesh::connect_mqtt() {
 
 
 void ESP8266MQTTMesh::publish(const char *subtopic, const char *msg, uint8_t msgType) {
+    publish(outTopic, myID, subtopic, msg, msgType);
+}
+
+void ESP8266MQTTMesh::publish(const char *topicDirection, const char *baseTopic, const char *subTopic, const char *msg, uint8_t msgType) {
     char topic[64];
-    strlcpy(topic, outTopic, sizeof(topic));
-    strlcat(topic, mySSID, sizeof(topic));
-    strlcat(topic, subtopic, sizeof(topic));
+    strlcpy(topic, topicDirection, sizeof(topic));
+    strlcat(topic, baseTopic, sizeof(topic));
+    strlcat(topic, subTopic, sizeof(topic));
     dbgPrintln(EMMDBG_MQTT_EXTRA, "Sending: " + String(topic) + "=" + String(msg));
     if (! meshConnect) {
         mqtt_publish(topic, msg, msgType);
@@ -526,85 +488,32 @@ void ESP8266MQTTMesh::shutdown_AP() {
 void ESP8266MQTTMesh::setup_AP() {
     if (AP_ready)
         return;
-    char filename[32];
-    strlcpy(filename, "/bssid/", sizeof(filename));
-    strlcat(filename, WiFi.softAPmacAddress().c_str(), sizeof(filename));
-    int subdomain = read_subdomain(filename);
-    if (subdomain == -1) {
-        return;
+    
+    uint octet3 = WiFi.gatewayIP()[2] + 1;
+    if (! octet3) {
+        octet3++;
     }
-    char subdomainStr[4];
-    itoa(subdomain, subdomainStr, 10);
-    strlcpy(mySSID, base_ssid, sizeof(mySSID));
-    strlcat(mySSID, subdomainStr, sizeof(mySSID));
-    IPAddress apIP(192, 168, subdomain, 1);
-    IPAddress apGateway(192, 168, subdomain, 1);
+    IPAddress apIP(WiFi.gatewayIP()[0],
+                   WiFi.gatewayIP()[1],
+                   octet3,
+                   1);
+    IPAddress apGateway(apIP);
     IPAddress apSubmask(255, 255, 255, 0);
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(apIP, apGateway, apSubmask);
-    WiFi.softAP(mySSID, mesh_password, WiFi.channel(), 1);
-    dbgPrintln(EMMDBG_WIFI, "Initialized AP as '" + String(mySSID) + "'  IP '" + apIP.toString() + "'");
-    strlcat(mySSID, "/", sizeof(mySSID));
-    if (meshConnect) {
-        publish("mesh_cmd", "request_bssid");
-    }
+    WiFi.softAP(mesh_ssid, mesh_password, WiFi.channel(), 1);
+    dbgPrintln(EMMDBG_WIFI, "Initialized AP as '" + String(mesh_ssid) + "'  IP '" + apIP.toString() + "'");
     connecting = false; //Connection complete
     AP_ready = true;
 }
-int ESP8266MQTTMesh::read_subdomain(const char *fileName) {
-      char subdomain[4];
-      File f = SPIFFS.open(fileName, "r");
-      if (! f) {
-          dbgPrintln(EMMDBG_MSG_EXTRA, "Failed to read " + String(fileName));
-          return -1;
-      }
-      subdomain[f.readBytesUntil('\n', subdomain, sizeof(subdomain)-1)] = 0;
-      f.close();
-      unsigned int value = strtoul(subdomain, NULL, 10);
-      if (value < 0 || value > 255) {
-          dbgPrintln(EMMDBG_MSG, "Illegal value '" + String(subdomain) + "' from " + String(fileName));
-          return -1;
-      }
-      return value;
-}
-void ESP8266MQTTMesh::assign_subdomain() {
-    char seen[256];
-    if (match_bssid(WiFi.softAPmacAddress().c_str())) {
-        return;
-    }
-    memset(seen, 0, sizeof(seen));
-    Dir dir = SPIFFS.openDir("/bssid/");
-    while(dir.next()) {
-      int value = read_subdomain(dir.fileName().c_str());
-      if (value == -1) {
-          continue;
-      }
-      dbgPrintln(EMMDBG_WIFI_EXTRA, "Mapping " + dir.fileName() + " to " + String(value) + " ");
-      seen[value] = 1;
-    }
-    for (int i = 4; i < 256; i++) {
-        if (! seen[i]) {
-            File f = SPIFFS.open("/bssid/" +  WiFi.softAPmacAddress(), "w");
-            if (! f) {
-                dbgPrintln(EMMDBG_MSG, "Couldn't write "  + WiFi.softAPmacAddress());
-                die();
-            }
-            f.print(i);
-            f.print("\n");
-            f.close();
-            //Yes this is meant to be inTopic.  That allows all other nodes to see this message
-            char topic[TOPIC_LEN];
-            char msg[4];
-            itoa(i, msg, 10);
-            strlcpy(topic, inTopic, sizeof(topic));
-            strlcat(topic, "bssid/", sizeof(topic));
-            strlcat(topic, WiFi.softAPmacAddress().c_str(), sizeof(topic));
-            dbgPrintln(EMMDBG_MQTT_EXTRA, "Publishing " + String(topic) + " == " + String(i));
-            mqttClient.publish(topic, 0, true, msg);
-            setup_AP();
-            return;
-        }
-    }
+
+void ESP8266MQTTMesh::send_connected_msg() {
+      //The list of nodes is only stored on the broker.  Individual nodes don't knowother node IDs
+      char topic[TOPIC_LEN];
+      char msg[10];
+      strlcpy(msg, myID, sizeof(msg));
+      msg[strlen(msg)-1] = 0; // Chop off trailing '/'
+      publish(outTopic, "bssid/", WiFi.softAPmacAddress().c_str(), msg, MSG_TYPE_RETAIN_QOS_0);
 }
 
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
@@ -638,26 +547,6 @@ void ESP8266MQTTMesh::broadcast_message(const char *topicOrMsg, const char *msg)
     }
 }
 
-void ESP8266MQTTMesh::send_bssids(int idx) {
-    Dir dir = SPIFFS.openDir("/bssid/");
-    char msg[TOPIC_LEN];
-    char subdomainStr[4];
-    while(dir.next()) {
-        int subdomain = read_subdomain(dir.fileName().c_str());
-        if (subdomain == -1) {
-            continue;
-        }
-        itoa(subdomain, subdomainStr, 10);
-        strlcpy(msg, inTopic, sizeof(msg));
-        strlcat(msg, "bssid/", sizeof(msg));
-        strlcat(msg, dir.fileName().substring(7).c_str(), sizeof(msg)); // bssid
-        strlcat(msg, "=", sizeof(msg));
-        strlcat(msg, subdomainStr, sizeof(msg));
-        send_message(idx, msg);
-    }
-}
-
-
 void ESP8266MQTTMesh::handle_client_data(int idx, char *rawdata) {
             dbgPrintln(EMMDBG_MQTT, "Received: msg from " + espClient[idx]->remoteIP().toString() + " on " + (idx == 0 ? "STA" : "AP"));
             const char *data = rawdata + (idx ? 1 : 0);
@@ -676,9 +565,6 @@ void ESP8266MQTTMesh::handle_client_data(int idx, char *rawdata) {
                 unsigned char msgType = rawdata[0];
                 if (strstr(topic,"/mesh_cmd")  == topic + strlen(topic) - 9) {
                     // We will handle this packet locally
-                    if (0 == strcmp(msg, "request_bssid")) {
-                        send_bssids(idx);
-                    }
                 } else {
                     if (! meshConnect) {
                         mqtt_publish(topic, msg, msgType);
@@ -745,8 +631,8 @@ void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
 
 void ESP8266MQTTMesh::handle_fw(const char *cmd) {
     int len;
-    if(strstr(cmd, mySSID) == cmd) {
-        len = strlen(mySSID);
+    if(strstr(cmd, myID) == cmd) {
+        len = strlen(myID);
     } else if (strstr(cmd, "broadcast") == cmd) {
         len = 9;
     } else {
@@ -830,8 +716,8 @@ void ESP8266MQTTMesh::erase_sector() {
 
 void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
     dbgPrintln(EMMDBG_OTA_EXTRA, "OTA cmd " + String(cmd) + " Length: " + String(strlen(msg)));
-    if(strstr(cmd, mySSID) == cmd) {
-        cmd += strlen(mySSID);
+    if(strstr(cmd, myID) == cmd) {
+        cmd += strlen(myID);
     } else {
         char *end;
         unsigned int id = strtoul(cmd,&end, 16);
@@ -994,12 +880,8 @@ void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
     strlcat(subscribe, "#", sizeof(subscribe));
     mqttClient.subscribe(subscribe, 0);
 
-    if (match_bssid(WiFi.softAPmacAddress().c_str())) {
-        setup_AP();
-    } else {
-        //If we don't get a mapping for our BSSID within 10 seconds, define one
-        schedule.once(10.0, assign_subdomain, this);
-    }
+    send_connected_msg();
+    setup_AP();
 }
 
 void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
@@ -1109,10 +991,8 @@ void ESP8266MQTTMesh::onConnect(AsyncClient* c) {
         }
     }
 #endif
-
-    if (match_bssid(WiFi.softAPmacAddress().c_str())) {
-        setup_AP();
-    }
+    send_connected_msg();
+    setup_AP();
 }
 
 void ESP8266MQTTMesh::onDisconnect(AsyncClient* c) {

@@ -47,12 +47,11 @@
 #define      FIRMWARE_ID        0x2222
 #define      FIRMWARE_VER       "0.2"
 
-const char*  networks[]       = NETWORK_LIST;
-const char*  network_password = NETWORK_PASSWORD;
+const wifi_conn  networks[]   = NETWORK_LIST;
 const char*  mqtt_server      = MQTT_SERVER;
 const char*  mesh_password    = MESH_PASSWORD;
 
-ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt_server)
+ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, mqtt_server)
                      .setVersion(FIRMWARE_VER, FIRMWARE_ID)
                      .setMeshPassword(mesh_password)
                      .build();

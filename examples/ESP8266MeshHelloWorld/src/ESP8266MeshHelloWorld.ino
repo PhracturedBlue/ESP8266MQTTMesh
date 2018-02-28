@@ -1,5 +1,4 @@
 #include "credentials.h"
-#include <ESP8266WiFi.h>
 #include <ESP8266MQTTMesh.h>
 #include <FS.h>
 
@@ -11,8 +10,7 @@
 
 #define      FIRMWARE_ID        0x1337
 #define      FIRMWARE_VER       "0.1"
-const char*  networks[]       = NETWORK_LIST;
-const char*  network_password = NETWORK_PASSWORD;
+wifi_conn    networks[]       = NETWORK_LIST;
 const char*  mesh_password    = MESH_PASSWORD;
 const char*  mqtt_server      = MQTT_SERVER;
 const int    mqtt_port        = MQTT_PORT;
@@ -22,7 +20,11 @@ bool         mqtt_secure      = MQTT_SECURE;
 bool         mesh_secure      = MESH_SECURE;
 #endif
 
+#ifdef ESP32
+String ID  = String((unsigned long)ESP.getEfuseMac());
+#else
 String ID  = String(ESP.getChipId());
+#endif
 
 
 
@@ -33,7 +35,7 @@ int cnt = 0;
 
 // Note: All of the '.set' options below are optional.  The default values can be
 // found in ESP8266MQTTMeshBuilder.h
-ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, network_password, mqtt_server, mqtt_port)
+ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, mqtt_server, mqtt_port)
                        .setVersion(FIRMWARE_VER, FIRMWARE_ID)
                        .setMeshPassword(mesh_password)
 #if ASYNC_TCP_SSL_ENABLED

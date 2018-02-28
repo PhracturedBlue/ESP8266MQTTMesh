@@ -4,16 +4,16 @@
 class ESP8266MQTTMesh::Builder {
 private:
     const wifi_conn *networks;
-    const char   *network_password;
 
     const char   *mqtt_server;
     int          mqtt_port;
     const char   *mqtt_username;
     const char   *mqtt_password;
  
+    const char   *mesh_ssid;
     const char   *mesh_password;
-    const char   *base_ssid;
     int          mesh_port;
+    uint32_t     mesh_bssid_key;
 
     const char   *inTopic;
     const char   *outTopic;
@@ -28,20 +28,19 @@ private:
 
 public:
     Builder(const wifi_conn *networks,
-            const char   *network_password,
             const char   *mqtt_server,
             int          mqtt_port = 0):
        networks(networks),
-       network_password(network_password),
        mqtt_server(mqtt_server),
        mqtt_port(mqtt_port),
        mqtt_username(NULL),
        mqtt_password(NULL),
        firmware_id(0),
        firmware_ver(NULL),
+       mesh_ssid("esp8266_mqtt_mesh"),
        mesh_password("ESP8266MQTTMesh"),
-       base_ssid("mesh_esp8266-"),
        mesh_port(1884),
+       mesh_bssid_key(0x118d5b), 
 #if ASYNC_TCP_SSL_ENABLED
        mqtt_secure(false),
        mqtt_fingerprint(NULL),
@@ -62,8 +61,8 @@ public:
         return *this;
     }
     Builder& setMeshPassword(const char *password) { this->mesh_password = password; return *this; }
-    Builder& setBaseSSID(const char *ssid) { this->base_ssid = ssid; return *this; }
     Builder& setMeshPort(int port) { this->mesh_port = port; return *this; }
+    Builder& setMeshBSSIDKey(uint32_t key) { this->mesh_bssid_key = key; return *this; }
     Builder& setTopic(const char *inTopic, const char *outTopic) {
         this->inTopic = inTopic;
         this->outTopic = outTopic;
@@ -80,7 +79,6 @@ public:
     ESP8266MQTTMesh build() {
         return( ESP8266MQTTMesh(
             networks,
-            network_password,
 
             mqtt_server,
             mqtt_port,
@@ -90,9 +88,10 @@ public:
             firmware_ver,
             firmware_id,
 
+            mesh_ssid,
             mesh_password,
-            base_ssid,
             mesh_port,
+            mesh_bssid_key,
 
 #if ASYNC_TCP_SSL_ENABLED
             mqtt_secure,
@@ -106,7 +105,6 @@ public:
     ESP8266MQTTMesh *buildptr() {
         return( new ESP8266MQTTMesh(
             networks,
-            network_password,
 
             mqtt_server,
             mqtt_port,
@@ -116,9 +114,10 @@ public:
             firmware_ver,
             firmware_id,
 
+            mesh_ssid,
             mesh_password,
-            base_ssid,
             mesh_port,
+            mesh_bssid_key,
 
 #if ASYNC_TCP_SSL_ENABLED
             mqtt_secure,
