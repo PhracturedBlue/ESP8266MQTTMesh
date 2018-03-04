@@ -20,15 +20,18 @@
 #define MESH_API_VER "001"
 
 #include "Base64.h"
-#include "eboot_command.h"
 
 #include <limits.h>
+
+#if HAS_OTA
 extern "C" {
+  #include "eboot_command.h"
   #include "user_interface.h"
   extern uint32_t _SPIFFS_start;
 }
+#endif
 
-#ifndef pgm_read_with_offset //Requires Arduino core 2.4.0
+#if !defined(ESP32) && ! defined(pgm_read_with_offset) //Requires Arduino core 2.4.0
     #error "This version of the ESP8266 library is not supported"
 #endif
 
@@ -39,7 +42,7 @@ enum {
 
 //Define GATEWAY_ID to the value of ESP.getChipId() in order to prevent only a specific node from connecting via MQTT
 #ifdef GATEWAY_ID
-    #define IS_GATEWAY (ESP.getChipId() == GATEWAY_ID)
+    #define IS_GATEWAY (_chipID == GATEWAY_ID)
 #else
     #define IS_GATEWAY (1)
 #endif
@@ -95,7 +98,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
         mesh_bssid_key = lfsr(mesh_bssid_key, mesh_password[i]);
     }
     espClient[0] = new AsyncClient();
-    itoa(ESP.getChipId(), myID, 16);
+    itoa(_chipID, myID, 16);
     strlcat(myID, "/", sizeof(myID));
 #if HAS_OTA
     uint32_t usedSize = ESP.getSketchSize();
@@ -142,7 +145,7 @@ void ESP8266MQTTMesh::begin() {
     dbgPrintln(EMMDBG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
 #endif
     uint8_t mac[6];
-    generate_mac(mac, ESP.getChipId());
+    generate_mac(mac, _chipID);
     //char macstr[18];
     //sprintf(macstr,"%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     //dbgPrintln(EMMDBG_MSG, "Changing MAC address to: " + String(macstr));
@@ -150,9 +153,9 @@ void ESP8266MQTTMesh::begin() {
 
     // This is needed to ensure both wifi_set_macaddr() calls work
     WiFi.mode(WIFI_AP_STA);
-    bool ok_ap = wifi_set_macaddr(SOFTAP_IF, const_cast<uint8*>(mac));
+    bool ok_ap = wifi_set_macaddr(SOFTAP_IF, const_cast<uint8_t *>(mac));
     mac[0] |= 0x04;
-    bool ok_sta = wifi_set_macaddr(STATION_IF, const_cast<uint8*>(mac)); 
+    bool ok_sta = wifi_set_macaddr(STATION_IF, const_cast<uint8_t *>(mac)); 
     if (! ok_ap || ! ok_sta) {
         dbgPrintln(EMMDBG_MSG, "Failed to set MAC address");
         die();
@@ -165,11 +168,7 @@ void ESP8266MQTTMesh::begin() {
     // in WIFI_AP_STA
     WiFi.mode(WIFI_STA);
 
-    wifiConnectHandler     = WiFi.onStationModeGotIP(            [this] (const WiFiEventStationModeGotIP& e) {                this->onWifiConnect(e);    }); 
-    wifiDisconnectHandler  = WiFi.onStationModeDisconnected(     [this] (const WiFiEventStationModeDisconnected& e) {         this->onWifiDisconnect(e); });
-    //wifiDHCPTimeoutHandler = WiFi.onStationModeDHCPTimeout(      [this] () {                                                  this->onDHCPTimeout();     });
-    wifiAPConnectHandler   = WiFi.onSoftAPModeStationConnected(  [this] (const WiFiEventSoftAPModeStationConnected& ip) {     this->onAPConnect(ip);     });
-    wifiAPDisconnectHandler= WiFi.onSoftAPModeStationDisconnected([this] (const WiFiEventSoftAPModeStationDisconnected& ip) { this->onAPDisconnect(ip);  });
+    this->connectWiFiEvents();
 
     espClient[0]->setNoDelay(true);
     espClient[0]->onConnect(   [this](void * arg, AsyncClient *c)                           { this->onConnect(c);         }, this);
@@ -216,16 +215,71 @@ void ESP8266MQTTMesh::begin() {
     connect();
 }
 
-bool ESP8266MQTTMesh::isAPConnected(uint8 *mac) {
-    struct station_info *station_list = wifi_softap_get_station_info();
-    while (station_list != NULL) {
-        if(memcmp(mac, station_list->bssid, 6) == 0) {
-            return true;
-        }
-        station_list = NEXT_STATION(station_list);
-    }
-    return false;
+#ifdef USE_WIFI_ONEVENT
+//The ESP32 does not support the std::function onEvent variants
+
+static ESP8266MQTTMesh *meshPtr;
+
+void staticWiFiEventHandler(system_event_id_t event, system_event_info_t info)
+{
+    meshPtr->WiFiEventHandler(event, info);
 }
+
+void ESP8266MQTTMesh::WiFiEventHandler(system_event_id_t event, system_event_info_t info)
+{
+    switch(event) {
+    case SYSTEM_EVENT_STA_GOT_IP:
+    {
+        struct WiFiEventStationModeGotIP e;
+        e.ip = info.got_ip.ip_info.ip.addr;
+        e.mask = info.got_ip.ip_info.netmask.addr;
+        e.gw = info.got_ip.ip_info.gw.addr;
+        this->onWifiConnect(e);
+        break;
+    }
+    case SYSTEM_EVENT_STA_DISCONNECTED:
+    {
+        struct WiFiEventStationModeDisconnected e;
+        e.ssid.reserve(info.disconnected.ssid_len+1);
+        for(int i = 0; i < info.disconnected.ssid_len; i++) {
+            e.ssid += (char)info.disconnected.ssid[i];
+        }
+        memcpy(e.bssid, info.disconnected.bssid, 6);
+        e.reason = info.disconnected.reason;
+        this->onWifiDisconnect(e);
+        break;
+    }
+    case SYSTEM_EVENT_AP_STACONNECTED:
+    {
+        this->onAPConnect(info.sta_connected);
+        break;
+    }
+    case SYSTEM_EVENT_AP_STADISCONNECTED:
+        this->onAPDisconnect(info.sta_disconnected);
+        break;
+    }
+}
+
+void ESP8266MQTTMesh::connectWiFiEvents()
+{
+    meshPtr = this;
+    WiFi.onEvent(&staticWiFiEventHandler);
+}
+#else //USE_WIFI_ONEVENT
+void ESP8266MQTTMesh::connectWiFiEvents()
+{
+    //wifiConnectHandler =
+        WiFi.onStationModeGotIP(            [this] (const WiFiEventStationModeGotIP& e) {                this->onWifiConnect(e);    }); 
+    //wifiDisconnectHandler =
+        WiFi.onStationModeDisconnected(     [this] (const WiFiEventStationModeDisconnected& e) {         this->onWifiDisconnect(e); });
+    //wifiDHCPTimeoutHandler =
+    //    WiFi.onStationModeDHCPTimeout(      [this] () {                                                  this->onDHCPTimeout();     });
+    //wifiAPConnectHandler =
+        WiFi.onSoftAPModeStationConnected(  [this] (const WiFiEventSoftAPModeStationConnected& ip) {     this->onAPConnect(ip);     });
+    //wifiAPDisconnectHandler =
+        WiFi.onSoftAPModeStationDisconnected([this] (const WiFiEventSoftAPModeStationDisconnected& ip) { this->onAPDisconnect(ip);  });
+}
+#endif //USE_WIFI_ONEVENT
 
 uint32_t ESP8266MQTTMesh::lfsr(uint32_t seed, uint8_t b)
 {
@@ -262,18 +316,6 @@ bool ESP8266MQTTMesh::verify_bssid(uint8_t *bssid) {
     uint32_t id = (bssid[3] << 16) | (bssid[4] << 8) | bssid[5];
     uint32_t res = encrypt_id(id);
     return res == wanted;
-}
-
-void ESP8266MQTTMesh::getMAC(IPAddress ip, uint8 *mac) {
-    struct station_info *station_list = wifi_softap_get_station_info();
-    while (station_list != NULL) {
-        if ((&station_list->ip)->addr == ip) {
-            memcpy(mac, station_list->bssid, 6);
-            return;
-        }
-        station_list = NEXT_STATION(station_list);
-    }
-    memset(mac, 0, 6);
 }
 
 bool ESP8266MQTTMesh::connected() {
@@ -626,7 +668,7 @@ void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
     }
     strlcat(msg, "ChipID: ", len);
     strlcat(msg, "ChipID: 0x", len);
-    itoa(ESP.getChipId(), id, 16);
+    itoa(_chipID, id, 16);
     strlcat(msg, id, len);
     strlcat(msg, " FW: 0x", len);
     itoa(firmware_id, id, 16);
@@ -649,6 +691,7 @@ void ESP8266MQTTMesh::handle_fw(const char *cmd) {
     publish("fw", msg);
 }
 
+#if HAS_OTA
 void ESP8266MQTTMesh::parse_ota_info(const char *str) {
     memset (&ota_info, 0, sizeof(ota_info));
     char kv[64];
@@ -826,6 +869,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         }
     }
 }
+#endif //HAS_OTA
 
 void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
     if (meshConnect) {

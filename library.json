@@ -4,7 +4,7 @@
   "description": "An Arduino for ESP8266 self-assembling Mesh network built around the MQTT protocol supporting OTA",
   "version": "1.0.2",
   "frameworks": "arduino",
-  "platforms": "espressif",
+  "platforms": ["espressif8266", "espressif32"],
   "authors":
   {
     "name": "PhracturedBlue",
@@ -18,11 +18,26 @@
   "dependencies": [
     {
       "name": "ESPAsyncTCP",
-      "version": "^1.1.3"
+      "version": "^1.1.3",
+      "platforms": "espressif8266"
     },
     {
       "name": "AsyncMqttClient",
-      "version": "^0.8.1"
+      "version": "^0.8.1",
+      "platforms": "espressif8266"
+    },
+    {
+      "name": "AsyncTCP",
+      "platforms": "espressif32"
+    },
+    {
+      "name": "Ticker-esp32",
+      "platforms": "espressif32"
+    },
+    {
+      "name": "AsyncMqttClient",
+      "version": "https://github.com/marvinroger/async-mqtt-client#101277d",
+      "platforms": "espressif32"
     }
   ]
 }
