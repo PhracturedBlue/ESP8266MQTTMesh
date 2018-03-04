@@ -13,6 +13,8 @@ Additionally the library provides an OTA mechanism using the MQTT pathway which 
 
 This code was developed primarily for the Sonoff line of relays, but should work with any ESP8266 board with sufficient flash memory
 
+Further information about the mesh topology can be found [here](docs/MeshTopology.md)
+
 ### Note for version >= 1.0
 As of version 1.0 the nodes no longer need to connect to the broker once before use.  Nodes can self-identify other nodes automatically
 and do not store any needed state on the broker.  Nodes use the MAC address to identify other nodes, and the ESP8266MQTTMesh code
