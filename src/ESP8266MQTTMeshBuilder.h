@@ -45,7 +45,7 @@ public:
 #if ASYNC_TCP_SSL_ENABLED
        mqtt_secure(false),
        mqtt_fingerprint(NULL),
-       mesh_secure({NULL, NULL, 0, 0}),
+       mesh_secure({NULL, NULL, NULL, 0, 0}),
 #endif
        inTopic("esp8266-in/"),
        outTopic("esp8266-out/")
@@ -76,9 +76,11 @@ public:
         return *this;
     }
     Builder & setMeshSSL(const uint8_t *ssl_cert, uint32_t ssl_cert_len,
-                         const uint8_t *ssl_key, uint32_t ssl_key_len) {
+                         const uint8_t *ssl_key, uint32_t ssl_key_len,
+                         const uint8_t *ssl_fingerprint) {
         this->mesh_secure.cert = ssl_cert;
         this->mesh_secure.key = ssl_key;
+        this->mesh_secure.fingerprint = ssl_fingerprint;
         this->mesh_secure.cert_len = ssl_cert_len;
         this->mesh_secure.key_len = ssl_key_len;
         return *this;

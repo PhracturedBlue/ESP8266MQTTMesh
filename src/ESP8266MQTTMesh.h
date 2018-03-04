@@ -59,6 +59,7 @@ enum MSG_TYPE {
 typedef struct {
     const uint8_t *cert;
     const uint8_t *key;
+    const uint8_t *fingerprint;
     uint32_t cert_len;
     uint32_t key_len;
 } ssl_cert_t;

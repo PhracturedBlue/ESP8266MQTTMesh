@@ -43,7 +43,7 @@ ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, mqtt_server, mqtt_port
 #if ASYNC_TCP_SSL_ENABLED
                        .setMqttSSL(mqtt_secure, mqtt_fingerprint)
 #if MESH_SECURE
-                       .setMeshSSL(ssl_cert, ssl_cert_len, ssl_key, ssl_key_len)
+                       .setMeshSSL(ssl_cert, ssl_cert_len, ssl_key, ssl_key_len, ssl_fingerprint)
 #endif //MESH_SECURE
 #endif //ASYNC_TCP_SSL_ENABLED
                        .build();

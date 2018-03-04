@@ -925,6 +925,9 @@ int ESP8266MQTTMesh::onSslFileRequest(const char *filename, uint8_t **buf) {
     } else if(strcmp(filename, "key") == 0) {
         *buf = (uint8_t *)mesh_secure.key;
         return mesh_secure.key_len;
+    } else if(strcmp(filename, "fingerprint") == 0) {
+        *buf = (uint8_t *)mesh_secure.fingerprint;
+        return 20;
     } else {
         *buf = 0;
         dbgPrintln(EMMDBG_WIFI, "Error reading SSL File: " + filename);
@@ -959,7 +962,7 @@ void ESP8266MQTTMesh::onConnect(AsyncClient* c) {
         uint8_t *fingerprint;
         if (! clientSsl) {
             dbgPrintln(EMMDBG_WIFI, "Connection is not secure");
-        } else if(onSslFileRequest("/ssl/fingerprint", &fingerprint)) {
+        } else if(onSslFileRequest("fingerprint", &fingerprint)) {
             if (ssl_match_fingerprint(clientSsl, fingerprint) == SSL_OK) {
                 sslFoundFingerprint = true;
             }

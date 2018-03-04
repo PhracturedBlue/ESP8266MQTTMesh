@@ -33,6 +33,7 @@ openssl x509 -outform DER -in axTLS.x509_1024.pem -out axTLS.x509_1024.cer
 
 cat axTLS.key_1024 > server.key
 cat axTLS.x509_1024.cer > server.cer
+python -c 'import os; import hashlib; os.write(1,hashlib.sha1(open("server.cer", "rb").read()).digest())' > fingerprint
 
 echo "const uint8_t ssl_key[] =" > ssl_cert.h
 hexdump -v -e '16/1 "_x%02X" "\n"' server.key | sed 's/_/\\/g; s/\\x  //g; s/.*/    "&"/' >> ssl_cert.h
@@ -44,5 +45,8 @@ hexdump -v -e '16/1 "_x%02X" "\n"' server.cer | sed 's/_/\\/g; s/\\x  //g; s/.*/
 echo ";" >> ssl_cert.h
 echo "const uint32_t ssl_cert_len = `cat server.cer | wc -c`;" >> ssl_cert.h
 
-python -c 'import os; import hashlib; os.write(1,hashlib.sha1(open("server.cer", "rb").read()).digest())' > fingerprint
+echo "const uint8_t ssl_fingerprint[] =" >> ssl_cert.h
+hexdump -v -e '16/1 "_x%02X" "\n"' fingerprint | sed 's/_/\\/g; s/\\x  //g; s/.*/    "&"/' >> ssl_cert.h
+echo ";" >> ssl_cert.h
+
 rm axTLS.* ca_cert.conf certs.conf
