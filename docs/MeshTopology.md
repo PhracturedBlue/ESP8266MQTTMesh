@@ -1,6 +1,6 @@
-# More information about the mesh construction and communication
+# Mesh Construction and Communication
 
-!(Mesh Topology)[/images/MeshTopology.png]
+![Mesh Topology](images/MeshTopology.png)
 
 Nodes always power up in Station mode.  Each node in the mesh will 1st try to connect to one of the configured WiFi access-points.i
 If the node cannot see any APs, it will next attempt to connect to any nearby nodes.
