@@ -2,8 +2,9 @@
 Self-assembling mesh network built around the MQTT protocol for the ESP8266 with OTA support
 
 ## Overview
-Provide a library that can build a mesh network between ESP8266 devices that will allow all nodes to communicate with an MQTT broker.
-At least one node must be able to see a wiFi router, and there must me a host on the WiFi network running the MQTT broker.
+This code provides a library that can build a mesh network between ESP8266 devices that will allow all nodes to communicate
+with an MQTT broker.  At least one node must be able to see a wiFi router, and there must me a host on the WiFi network running
+the MQTT broker.
 Nodes cannot (generally) communicate between themselves, but instead forward all messages through the broker.
 Each node will expose a hidden AP which can be connected to from any other node on the network.  Note:  hiding the AP does not provide
 any additional security, but does minimize the clutter of other WiFi clients in the area.
@@ -13,7 +14,7 @@ Additionally the library provides an OTA mechanism using the MQTT pathway which 
 This code was developed primarily for the Sonoff line of relays, but should work with any ESP8266 board with sufficient flash memory
 
 ### Note for version >= 1.0
-As of version 1.0 The nodes no longer need to connect to the broker once before use.  Nodes can self-identify other nodes automatically
+As of version 1.0 the nodes no longer need to connect to the broker once before use.  Nodes can self-identify other nodes automatically
 and do not store any needed state on the broker.  Nodes use the MAC address to identify other nodes, and the ESP8266MQTTMesh code
 will change the node's MAC address to match the required pattern.  The MAC addresses are based on both the node's chipID as well as the mesh password, ensuring that each node will have a unique MAC address as well as that multiple meshes can run in the same area independently.
 
@@ -35,13 +36,13 @@ This library has been converted to use Asynchronous communication for imroved re
 * ESPAsyncTCP
 * Arduino ESP8266 Core version 2.4
 
-PlatformIO is strongly recommended, and installation instructions can be found [here](http://docs.platformio.org/en/latest/platforms/espressif8266.html#using-arduino-framework-with-staging-version)).
+PlatformIO is strongly recommended, and installation instructions can be found [here](http://docs.platformio.org/en/latest/platforms/espressif8266.html)).
 
 **NOTE:** Enabling SSL will add ~70kB to the firmware size, and may make it impossible to use OTA updates depending on firmware and flash size.
 
-If OTA support is desired, the esp8266 module must have at least 1M or Flash (configured as 784k ROM, 256k SPIFFS).  The OTA image is stored
-between the end of the firmware image and the beginning of the filesystem (i.e. not in the filesystem itself).  Thus, for a 1M Flash, the firmware can
-be no larger than ~390kB
+If OTA support is desired, the esp8266 module must have at least 1M or Flash (configured as >=784k ROM).  The OTA image is stored
+between the end of the firmware image and the beginning of the filesystem (i.e. not in the filesystem itself) or the end of flash if
+no filesystem is present.  Thus, ithe maximum firmware size is ~ 1/2 the available Flash.
 
 ### Library initialization
 The ESP8266MQTTMesh only requires 2 parameters to initialize, but there are many additional optional parameters:
