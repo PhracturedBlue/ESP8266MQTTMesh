@@ -702,6 +702,15 @@ bool ESP8266MQTTMesh::check_ota_md5() {
     return true;
 }
 
+char * ESP8266MQTTMesh::md5(const uint8_t *msg, int len) {
+    static char out[33];
+    MD5Builder _md5;
+    _md5.begin();
+    _md5.add(msg, len);
+    _md5.calculate();
+    _md5.getChars(out);
+    return out;
+}
 void ESP8266MQTTMesh::erase_sector() {
     int start = freeSpaceStart / FLASH_SECTOR_SIZE;
     //erase flash area here
@@ -710,12 +719,18 @@ void ESP8266MQTTMesh::erase_sector() {
         schedule.once(0.0, erase_sector, this);
     } else {
         nextErase = 0;
-        dbgPrintln(EMMDBG_OTA, "Erase complete in " +  String((micros() - startTime) / 1000000.0, 6) + " seconds");
+        char deltaStr[10];
+        uint32_t delta = micros() - startTime;
+        itoa(delta, deltaStr, 10);
+        dbgPrintln(EMMDBG_OTA, "Erase complete in " + String(delta / 1000000.0, 6) + " seconds");
+        publish("ota/erase", deltaStr);
     }
 }
 
 void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
     dbgPrintln(EMMDBG_OTA_EXTRA, "OTA cmd " + String(cmd) + " Length: " + String(strlen(msg)));
+    //Should we allow enabling/disabling this?
+    bool pingback = true;
     if(strstr(cmd, myID) == cmd) {
         cmd += strlen(myID);
     } else {
@@ -747,23 +762,18 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
     }
     else if(0 == strcmp(cmd, "check")) {
         if (strlen(msg) > 0) {
-            char out[33];
-            MD5Builder _md5;
-            _md5.begin();
-            _md5.add((uint8_t *)msg, strlen(msg));
-            _md5.calculate();
-            _md5.getChars(out);
-            publish("check", out);
+            char *out = md5((uint8_t *)msg, strlen(msg));
+            publish("ota/check", out);
         } else {
             const char *md5ok = check_ota_md5() ? "MD5 Passed" : "MD5 Failed";
             dbgPrintln(EMMDBG_OTA, md5ok);
-            publish("check", md5ok);
+            publish("ota/check", md5ok);
         }
     }
     else if(0 == strcmp(cmd, "flash")) {
         if (! check_ota_md5()) {
             dbgPrintln(EMMDBG_MSG, "Flash failed due to md5 mismatch");
-            publish("flash", "Failed");
+            publish("ota/flash", "Failed");
             return;
         }
         dbgPrintln(EMMDBG_OTA, "Flashing");
@@ -774,7 +784,8 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         ebcmd.args[1] = 0x00000;
         ebcmd.args[2] = ota_info.len;
         eboot_command_write(&ebcmd);
-        //publish("flash", "Success");
+        // If this is a broadcast OTA update, this would never go through
+        //publish("ota/flash", "Success");
 
         shutdown_AP();
         mqttClient.disconnect();
@@ -804,6 +815,12 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         dbgPrintln(EMMDBG_OTA_EXTRA, "Got " + String(len) + " bytes FW @ " + String(address, HEX));
         bool ok = ESP.flashWrite(freeSpaceStart + address, (uint32_t*) data, len);
         dbgPrintln(EMMDBG_OTA, "Wrote " + String(len) + " bytes in " +  String((micros() - t) / 1000000.0, 6) + " seconds");
+        if (pingback) {
+            char topic[17];
+            strlcpy(topic, "ota/md5/", sizeof(topic));
+            itoa(address, topic + strlen(topic), 16);
+            publish(topic, md5(data, len));
+        }
         if (! ok) {
             dbgPrintln(EMMDBG_MSG, "Failed to write firmware at " + String(freeSpaceStart + address, HEX) + " Length: " + String(len));
         }

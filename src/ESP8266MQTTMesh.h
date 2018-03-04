@@ -169,6 +169,7 @@ private:
     void handle_fw(const char *cmd);
     void handle_ota(const char *cmd, const char *msg);
     void parse_ota_info(const char *str);
+    char * md5(const uint8_t *msg, int len);
     bool check_ota_md5();
     bool isAPConnected(uint8 *mac);
     void getMAC(IPAddress ip, uint8 *mac);
