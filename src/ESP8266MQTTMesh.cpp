@@ -59,14 +59,13 @@ size_t mesh_strlcat (char *dst, const char *src, size_t len) {
 #define strlcat mesh_strlcat
 
 
-
 ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
                     const char *mqtt_server, int mqtt_port,
                     const char *mqtt_username, const char *mqtt_password,
                     const char *firmware_ver, int firmware_id,
                     const char *mesh_ssid, const char *_mesh_password, int mesh_port,
 #if ASYNC_TCP_SSL_ENABLED
-                    bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
+                    bool mqtt_secure, const uint8_t *mqtt_fingerprint, ssl_cert_t mesh_secure,
 #endif
                     const char *inTopic, const char *outTopic
                     ) :
@@ -95,7 +94,6 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
     for (int i = 0; mesh_password[i] != 0; i++) {
         mesh_bssid_key = lfsr(mesh_bssid_key, mesh_password[i]);
     }
-    mesh_bssid_key &= 0x3FFFFF; // limit to 22bits
     espClient[0] = new AsyncClient();
     itoa(ESP.getChipId(), myID, 16);
     strlcat(myID, "/", sizeof(myID));
@@ -143,23 +141,25 @@ void ESP8266MQTTMesh::begin() {
 #if HAS_OTA
     dbgPrintln(EMMDBG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
 #endif
-    if (! SPIFFS.begin()) {
-      dbgPrintln(EMMDBG_MSG_EXTRA, "Formatting FS");
-      SPIFFS.format();
-      if (! SPIFFS.begin()) {
-        dbgPrintln(EMMDBG_MSG, "Failed to format FS");
-        die();
-      }
-    }
-    Dir dir = SPIFFS.openDir("/bssid/");
-    while(dir.next()) {
-      dbgPrintln(EMMDBG_FS, " ==> '" + dir.fileName() + "'");
-    }
     uint8_t mac[6];
-    generate_mac(mac, mesh_bssid_key, ESP.getChipId());
-    wifi_set_macaddr(STATION_IF, const_cast<uint8*>(mac)); 
-
+    generate_mac(mac, ESP.getChipId());
+    //char macstr[18];
+    //sprintf(macstr,"%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    //dbgPrintln(EMMDBG_MSG, "Changing MAC address to: " + String(macstr));
     WiFi.disconnect();
+
+    // This is needed to ensure both wifi_set_macaddr() calls work
+    WiFi.mode(WIFI_AP_STA);
+    bool ok_ap = wifi_set_macaddr(SOFTAP_IF, const_cast<uint8*>(mac));
+    mac[0] |= 0x04;
+    bool ok_sta = wifi_set_macaddr(STATION_IF, const_cast<uint8*>(mac)); 
+    if (! ok_ap || ! ok_sta) {
+        dbgPrintln(EMMDBG_MSG, "Failed to set MAC address");
+        die();
+    }
+    dbgPrintln(EMMDBG_MSG, "MAC: " + WiFi.macAddress());
+    dbgPrintln(EMMDBG_MSG, "SoftAPMAC: " + WiFi.softAPmacAddress());
+
     // In the ESP8266 2.3.0 API, there seems to be a bug which prevents a node configured as
     // WIFI_AP_STA from openning a TCP connection to it's gateway if the gateway is also
     // in WIFI_AP_STA
@@ -183,9 +183,9 @@ void ESP8266MQTTMesh::begin() {
     espServer.setNoDelay(true);
 #if ASYNC_TCP_SSL_ENABLED
     espServer.onSslFileRequest([this](void * arg, const char *filename, uint8_t **buf) -> int { return this->onSslFileRequest(filename, buf); }, this);
-    if (mesh_secure) {
+    if (mesh_secure.cert) {
         dbgPrintln(EMMDBG_WIFI, "Starting secure server");
-        espServer.beginSecure("/ssl/server.cer","/ssl/server.key",NULL);
+        espServer.beginSecure("cert","key",NULL);
     } else
 #endif
     espServer.begin();
@@ -240,23 +240,28 @@ uint32_t ESP8266MQTTMesh::lfsr(uint32_t seed, uint8_t b)
     return seed;
 }
 
-void ESP8266MQTTMesh::generate_mac(uint8_t *bssid, uint32_t key, uint32_t id) {
-    id = lfsr(0xA55A5AA5 ^ id, 0) & 0xFFFFFF;   // Genereate pseudo-random 24bit value from id
+uint32_t ESP8266MQTTMesh::encrypt_id(uint32_t id) {
     // The lowest bits of the 1st octet need to be b'10 to indicate a
     // locally-administered unicast MAC address
-    uint64_t value = (((uint64_t)key * (uint64_t)id) << 2) + 2;
-    for (int i = 0; i < 6; i++) {
-        bssid[i] = (value >> (8 * i)) & 0xff;
+    return (((lfsr(id, 0) * mesh_bssid_key) << 3) + 2) & 0x00FFFFFF;
+}
+
+void ESP8266MQTTMesh::generate_mac(uint8_t *bssid, uint32_t id) {
+    uint32_t res = encrypt_id(id);
+    for(int i = 0; i < 3; i++) {
+        bssid[i] = (res >> (8 * i)) & 0xff;
+    }
+    for(int i = 0; i < 3; i++) {
+        bssid[5-i] = (id >> (8 * i)) & 0xff;
     }
 }
 
-bool ESP8266MQTTMesh::verify_bssid(uint8_t *bssid, uint32_t key) {
-    uint64_t value = 0;
-    for (int i = 0; i < 6; i++) {
-        value |= ((uint64_t)bssid[i]) << (8*i);
-    }
-    value = (value >> 2) - 2;
-    return (value % key) ? false : true;
+bool ESP8266MQTTMesh::verify_bssid(uint8_t *bssid) {
+    //bit 3 is 1 for station and 0 for AP
+    uint32_t wanted = ((bssid[2] << 16) | (bssid[1] << 8) | bssid[0]) & 0xFFFFFFFB;
+    uint32_t id = (bssid[3] << 16) | (bssid[4] << 8) | bssid[5];
+    uint32_t res = encrypt_id(id);
+    return res == wanted;
 }
 
 void ESP8266MQTTMesh::getMAC(IPAddress ip, uint8 *mac) {
@@ -301,7 +306,7 @@ void ESP8266MQTTMesh::scan() {
         bool found = false;
         int network_idx = NETWORK_MESH_NODE;
         int rssi = WiFi.RSSI(i);
-        dbgPrintln(EMMDBG_WIFI, "Found SSID: '" + WiFi.SSID(i) + "' BSSID '" + WiFi.BSSIDstr(i) + "'" + "RSSI: " + String(rssi));
+        dbgPrintln(EMMDBG_WIFI, "Found SSID: '" + WiFi.SSID(i) + "' BSSID '" + WiFi.BSSIDstr(i) + "'" + " RSSI: " + String(rssi));
         if (IS_GATEWAY) {
             network_idx = match_networks(WiFi.SSID(i).c_str(), WiFi.BSSIDstr(i).c_str());
         }
@@ -310,7 +315,7 @@ void ESP8266MQTTMesh::scan() {
                 dbgPrintln(EMMDBG_WIFI, "Did not match SSID list");
                 continue;
             } else {
-                if (! verify_bssid(WiFi.BSSID(i), mesh_bssid_key)) {
+                if (! verify_bssid(WiFi.BSSID(i))) {
                     dbgPrintln(EMMDBG_WIFI, "Failed to match BSSID");
                     continue;
                 }
@@ -337,7 +342,7 @@ void ESP8266MQTTMesh::scan() {
 
 int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
 {
-    for(int idx = 0; networks[idx].ssid == NULL; idx++) {
+    for(int idx = 0; networks[idx].ssid != NULL; idx++) {
         if(networks[idx].bssid) {
             if (strcmp(bssid, networks[idx].bssid) == 0) {
                 if (networks[idx].hidden && ssid[0] == 0) {
@@ -350,8 +355,9 @@ int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
                 continue;
             }
         }
+        dbgPrintln(EMMDBG_WIFI_EXTRA, "Comparing " + String(networks[idx].ssid));
         if(ssid[0] != 0) {
-            if (! networks[idx].hidden && strcmp(ssid, networks[idx].ssid) == 0) {
+            if ((! networks[idx].hidden) && strcmp(ssid, networks[idx].ssid) == 0) {
                 //matched ssid (and bssid if needed)
                 dbgPrintln(EMMDBG_WIFI, "Matched");
                 return idx;
@@ -510,11 +516,10 @@ void ESP8266MQTTMesh::setup_AP() {
 
 void ESP8266MQTTMesh::send_connected_msg() {
       //The list of nodes is only stored on the broker.  Individual nodes don't knowother node IDs
-      char topic[TOPIC_LEN];
-      char msg[10];
-      strlcpy(msg, myID, sizeof(msg));
-      msg[strlen(msg)-1] = 0; // Chop off trailing '/'
-      publish(outTopic, "bssid/", WiFi.softAPmacAddress().c_str(), msg, MSG_TYPE_RETAIN_QOS_0);
+      char topic[10];
+      strlcpy(topic, myID, sizeof(topic));
+      topic[strlen(topic)-1] = 0; // Chop off trailing '/'
+      publish(outTopic, "bssid/", topic, WiFi.softAPmacAddress().c_str(), MSG_TYPE_RETAIN_QOS_0);
 }
 
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
@@ -644,8 +649,7 @@ void ESP8266MQTTMesh::handle_fw(const char *cmd) {
     publish("fw", msg);
 }
 
-ota_info_t ESP8266MQTTMesh::parse_ota_info(const char *str) {
-    ota_info_t ota_info;
+void ESP8266MQTTMesh::parse_ota_info(const char *str) {
     memset (&ota_info, 0, sizeof(ota_info));
     char kv[64];
     while(str) {
@@ -668,15 +672,10 @@ ota_info_t ESP8266MQTTMesh::parse_ota_info(const char *str) {
             }
         }
     }
-    return ota_info;
 }
+    
 bool ESP8266MQTTMesh::check_ota_md5() {
     uint8_t buf[128];
-    File f = SPIFFS.open("/ota", "r");
-    buf[f.readBytesUntil('\n', buf, sizeof(buf)-1)] = 0;
-    f.close();
-    dbgPrintln(EMMDBG_OTA_EXTRA, "Read /ota: " + String((char *)buf));
-    ota_info_t ota_info = parse_ota_info((char *)buf);
     if (ota_info.len > freeSpaceEnd - freeSpaceStart) {
         return false;
     }
@@ -730,21 +729,12 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
     }
     if(0 == strcmp(cmd, "start")) {
         dbgPrintln(EMMDBG_OTA_EXTRA, "OTA Start");
-        ota_info_t ota_info = parse_ota_info(msg);
+        parse_ota_info(msg);
         if (ota_info.len == 0) {
             dbgPrintln(EMMDBG_OTA, "Ignoring OTA because firmware length = 0");
             return;
         }
         dbgPrintln(EMMDBG_OTA, "-> " + String(msg));
-        File f = SPIFFS.open("/ota", "w");
-        f.print(msg);
-        f.print("\n");
-        f.close();
-        f = SPIFFS.open("/ota", "r");
-        char buf[128];
-        buf[f.readBytesUntil('\n', buf, sizeof(buf)-1)] = 0;
-        f.close();
-        dbgPrintln(EMMDBG_OTA, "--> " + String(buf));
         if (ota_info.len > freeSpaceEnd - freeSpaceStart) {
             dbgPrintln(EMMDBG_MSG, "Not enough space for firmware: " + String(ota_info.len) + " > " + String(freeSpaceEnd - freeSpaceStart));
             return;
@@ -776,10 +766,6 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
             publish("flash", "Failed");
             return;
         }
-        uint8_t buf[128];
-        File f = SPIFFS.open("/ota", "r");
-        buf[f.readBytesUntil('\n', buf, sizeof(buf)-1)] = 0;
-        ota_info_t ota_info = parse_ota_info((char *)buf);
         dbgPrintln(EMMDBG_OTA, "Flashing");
         
         eboot_command ebcmd;
@@ -828,7 +814,7 @@ void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
     if (meshConnect) {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mesh: " + WiFi.gatewayIP().toString() + " on port: " + String(mesh_port));
 #if ASYNC_TCP_SSL_ENABLED
-        espClient[0]->connect(WiFi.gatewayIP(), mesh_port, mesh_secure);
+        espClient[0]->connect(WiFi.gatewayIP(), mesh_port, mesh_secure.cert ? true : false);
 #else
         espClient[0]->connect(WiFi.gatewayIP(), mesh_port);
 #endif
@@ -933,22 +919,17 @@ void ESP8266MQTTMesh::onMqttPublish(uint16_t packetId) {
 
 #if ASYNC_TCP_SSL_ENABLED
 int ESP8266MQTTMesh::onSslFileRequest(const char *filename, uint8_t **buf) {
-    File file = SPIFFS.open(filename, "r");
-    if(file){
-      size_t size = file.size();
-      uint8_t * nbuf = (uint8_t*)malloc(size);
-      if(nbuf){
-        size = file.read(nbuf, size);
-        file.close();
-        *buf = nbuf;
-        dbgPrintln(EMMDBG_WIFI, "SSL File: " + filename + " Size: " + String(size));
-        return size;
-      }
-      file.close();
+    if(strcmp(filename, "cert") == 0) {
+        *buf = (uint8_t *)mesh_secure.cert;
+        return mesh_secure.cert_len;
+    } else if(strcmp(filename, "key") == 0) {
+        *buf = (uint8_t *)mesh_secure.key;
+        return mesh_secure.key_len;
+    } else {
+        *buf = 0;
+        dbgPrintln(EMMDBG_WIFI, "Error reading SSL File: " + filename);
+        return 0;
     }
-    *buf = 0;
-    dbgPrintln(EMMDBG_WIFI, "Error reading SSL File: " + filename);
-    return 0;
 }
 #endif
 void ESP8266MQTTMesh::onClient(AsyncClient* c) {
@@ -972,7 +953,7 @@ void ESP8266MQTTMesh::onClient(AsyncClient* c) {
 void ESP8266MQTTMesh::onConnect(AsyncClient* c) {
     dbgPrintln(EMMDBG_WIFI, "Connected to mesh");
 #if ASYNC_TCP_SSL_ENABLED
-    if (mesh_secure) {
+    if (mesh_secure.cert) {
         SSL* clientSsl = c->getSSL();
         bool sslFoundFingerprint = false;
         uint8_t *fingerprint;

@@ -21,7 +21,7 @@ private:
     const char   *firmware_ver;
 #if ASYNC_TCP_SSL_ENABLED
     bool mqtt_secure;
-    bool mesh_secure;
+    ssl_cert_t mesh_secure;
     const uint8_t *mqtt_fingerprint;
     void fix_mqtt_port() { if (! mqtt_port) mqtt_port = mqtt_secure ? 8883 : 1883; };
 #else
@@ -45,7 +45,7 @@ public:
 #if ASYNC_TCP_SSL_ENABLED
        mqtt_secure(false),
        mqtt_fingerprint(NULL),
-       mesh_secure(false),
+       mesh_secure({NULL, NULL, 0, 0}),
 #endif
        inTopic("esp8266-in/"),
        outTopic("esp8266-out/")
@@ -75,7 +75,14 @@ public:
         this->mqtt_fingerprint = fingerprint;
         return *this;
     }
-    Builder & setMeshSSL(bool enable) { this->mesh_secure = enable; return *this; }
+    Builder & setMeshSSL(const uint8_t *ssl_cert, uint32_t ssl_cert_len,
+                         const uint8_t *ssl_key, uint32_t ssl_key_len) {
+        this->mesh_secure.cert = ssl_cert;
+        this->mesh_secure.key = ssl_key;
+        this->mesh_secure.cert_len = ssl_cert_len;
+        this->mesh_secure.key_len = ssl_key_len;
+        return *this;
+    }
 #endif
     ESP8266MQTTMesh build() {
         fix_mqtt_port();

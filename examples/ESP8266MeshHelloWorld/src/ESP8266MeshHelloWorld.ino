@@ -16,8 +16,10 @@ const char*  mqtt_server      = MQTT_SERVER;
 const int    mqtt_port        = MQTT_PORT;
 #if ASYNC_TCP_SSL_ENABLED
 const uint8_t *mqtt_fingerprint = MQTT_FINGERPRINT;
-bool         mqtt_secure      = MQTT_SECURE;
-bool         mesh_secure      = MESH_SECURE;
+bool mqtt_secure = MQTT_SECURE;
+  #if MESH_SECURE
+  #include "ssl_cert.h"
+  #endif
 #endif
 
 #ifdef ESP32
@@ -40,8 +42,10 @@ ESP8266MQTTMesh mesh = ESP8266MQTTMesh::Builder(networks, mqtt_server, mqtt_port
                        .setMeshPassword(mesh_password)
 #if ASYNC_TCP_SSL_ENABLED
                        .setMqttSSL(mqtt_secure, mqtt_fingerprint)
-                       .setMeshSSL(mesh_secure)
-#endif
+#if MESH_SECURE
+                       .setMeshSSL(ssl_cert, ssl_cert_len, ssl_key, ssl_key_len)
+#endif //MESH_SECURE
+#endif //ASYNC_TCP_SSL_ENABLED
                        .build();
 
 void callback(const char *topic, const char *msg);
@@ -51,6 +55,7 @@ void callback(const char *topic, const char *msg);
 void setup() {
 
     Serial.begin(115200);
+    delay(1000); //This is only here to make it easier to catch the startup messages.  It isn't required
     mesh.setCallback(callback);
     mesh.begin();
     pinMode(LED_PIN, OUTPUT);
@@ -73,7 +78,7 @@ void loop() {
           mesh.publish(ID.c_str(), msg.c_str());
           previousMillis = currentMillis;
           cnt++;
-      
+
     }
 
 }

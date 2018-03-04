@@ -57,6 +57,13 @@ enum MSG_TYPE {
 };
 
 typedef struct {
+    const uint8_t *cert;
+    const uint8_t *key;
+    uint32_t cert_len;
+    uint32_t key_len;
+} ssl_cert_t;
+
+typedef struct {
     unsigned int len;
     byte         md5[16];
 } ota_info_t;
@@ -101,10 +108,11 @@ private:
     uint32_t freeSpaceEnd;
     uint32_t nextErase;
     uint32_t startTime;
+    ota_info_t ota_info;
 #endif
 #if ASYNC_TCP_SSL_ENABLED
     bool mqtt_secure;
-    bool mesh_secure;
+    ssl_cert_t mesh_secure;
     const uint8_t *mqtt_fingerprint;
 #endif
     AsyncServer     espServer;
@@ -135,8 +143,9 @@ private:
     void die() { while(1) {} }
 
     uint32_t lfsr(uint32_t seed, uint8_t b);
-    void generate_mac(uint8_t *bssid, uint32_t key, uint32_t id);
-    bool verify_bssid(uint8_t *bssid, uint32_t key);
+    uint32_t encrypt_id(uint32_t id);
+    void generate_mac(uint8_t *bssid, uint32_t id);
+    bool verify_bssid(uint8_t *bssid);
 
     int match_networks(const char *ssid, const char *bssid);
     void scan();
@@ -158,7 +167,7 @@ private:
     void get_fw_string(char *msg, int len, const char *prefix);
     void handle_fw(const char *cmd);
     void handle_ota(const char *cmd, const char *msg);
-    ota_info_t parse_ota_info(const char *str);
+    void parse_ota_info(const char *str);
     bool check_ota_md5();
     bool isAPConnected(uint8 *mac);
     void getMAC(IPAddress ip, uint8 *mac);
@@ -201,7 +210,7 @@ private:
                     const char *firmware_ver, int firmware_id,
                     const char *mesh_ssid, const char *mesh_password, int mesh_port,
 #if ASYNC_TCP_SSL_ENABLED
-                    bool mqtt_secure, const uint8_t *mqtt_fingerprint, bool mesh_secure,
+                    bool mqtt_secure, const uint8_t *mqtt_fingerprint, ssl_cert_t mesh_secure,
 #endif
                     const char *inTopic, const char *outTopic);
 public:

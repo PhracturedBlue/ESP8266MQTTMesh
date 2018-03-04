@@ -2,3 +2,4 @@ credentials.h
 libraries
 .pioenvs
 .piolibdeps
+*.swp
