@@ -194,6 +194,13 @@ private:
 
     void connectWiFiEvents();
 
+#ifndef USE_WIFI_ONEVENT
+    WiFiEventHandler wifiConnectHandler;
+    WiFiEventHandler wifiDisconnectHandler;
+    WiFiEventHandler wifiAPConnectHandler;
+    WiFiEventHandler wifiAPDisconnectHandler;
+#endif
+
     void onWifiConnect(const WiFiEventStationModeGotIP& event);
     void onWifiDisconnect(const WiFiEventStationModeDisconnected& event);
     //void onDHCPTimeout();

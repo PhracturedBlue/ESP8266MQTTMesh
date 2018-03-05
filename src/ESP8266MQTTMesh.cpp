@@ -268,15 +268,15 @@ void ESP8266MQTTMesh::connectWiFiEvents()
 #else //USE_WIFI_ONEVENT
 void ESP8266MQTTMesh::connectWiFiEvents()
 {
-    //wifiConnectHandler =
+    wifiConnectHandler =
         WiFi.onStationModeGotIP(            [this] (const WiFiEventStationModeGotIP& e) {                this->onWifiConnect(e);    }); 
-    //wifiDisconnectHandler =
+    wifiDisconnectHandler =
         WiFi.onStationModeDisconnected(     [this] (const WiFiEventStationModeDisconnected& e) {         this->onWifiDisconnect(e); });
     //wifiDHCPTimeoutHandler =
     //    WiFi.onStationModeDHCPTimeout(      [this] () {                                                  this->onDHCPTimeout();     });
-    //wifiAPConnectHandler =
+    wifiAPConnectHandler =
         WiFi.onSoftAPModeStationConnected(  [this] (const WiFiEventSoftAPModeStationConnected& ip) {     this->onAPConnect(ip);     });
-    //wifiAPDisconnectHandler =
+    wifiAPDisconnectHandler =
         WiFi.onSoftAPModeStationDisconnected([this] (const WiFiEventSoftAPModeStationDisconnected& ip) { this->onAPDisconnect(ip);  });
 }
 #endif //USE_WIFI_ONEVENT
