@@ -36,7 +36,6 @@ extern "C" {
 #endif
 
 enum {
-    NETWORK_LAST_INDEX = -2,
     NETWORK_MESH_NODE  = -1,
 };
 
@@ -211,7 +210,7 @@ void ESP8266MQTTMesh::begin() {
 
     dbgPrintln(EMMDBG_WIFI_EXTRA, WiFi.status());
     dbgPrintln(EMMDBG_MSG_EXTRA, "Setup Complete");
-    ap_idx = LAST_AP;
+    ap_ptr = NULL;
     connect();
 }
 
@@ -325,11 +324,7 @@ bool ESP8266MQTTMesh::connected() {
 void ESP8266MQTTMesh::scan() {
     //Need to rescan
     if (! scanning) {
-        for(int i = 0; i < LAST_AP; i++) {
-            ap[i].rssi = -99999;
-            ap[i].ssid_idx = NETWORK_LAST_INDEX;
-        }
-        ap_idx = 0;
+        ap_ptr = NULL;
         WiFi.disconnect();
         WiFi.mode(WIFI_STA);
         dbgPrintln(EMMDBG_WIFI, "Scanning for networks");
@@ -337,12 +332,26 @@ void ESP8266MQTTMesh::scan() {
         WiFi.scanNetworks(true,true);
         scanning = true;
     }
+
+    //scanComplete returns <0 while scanning is in progress
     int numberOfNetworksFound = WiFi.scanComplete();
     if (numberOfNetworksFound < 0) {
         return;
     }
-    scanning = false;
     dbgPrintln(EMMDBG_WIFI, "Found: " + String(numberOfNetworksFound));
+
+    scanning = false;
+
+    //Initialize AP to be empty, and all unused APs on the unused list
+    if (ap_unused == NULL) {
+        ap_unused = ap;
+    } else {
+        for(ap_ptr = ap_unused; ap_ptr->next != NULL; ap_ptr = ap_ptr->next)
+        {}
+        ap_ptr->next = ap;
+    }
+    ap = NULL;
+
     int ssid_idx;
     for(int i = 0; i < numberOfNetworksFound; i++) {
         bool found = false;
@@ -363,23 +372,47 @@ void ESP8266MQTTMesh::scan() {
                 }
             }
         }
+        ap_t *next_ap;
+        if (! ap_unused) {
+            next_ap = new ap_t;
+        } else {
+            next_ap =ap_unused;
+            ap_unused = ap_unused->next;
+        }
+        //Assign next_ap
+        next_ap->ssid_idx = network_idx;
+        next_ap->rssi = rssi;
+        memcpy(next_ap->bssid, WiFi.BSSID(i), 6);
+
         //sort by RSSI
-        for(int j = 0; j < LAST_AP; j++) {
-            if(ap[j].ssid_idx == NETWORK_LAST_INDEX ||
-               (network_idx >= 0 &&
-                  (ap[j].ssid_idx == NETWORK_MESH_NODE || rssi > ap[j].rssi)) ||
-               (network_idx == NETWORK_MESH_NODE && ap[j].ssid_idx == NETWORK_MESH_NODE && rssi > ap[j].rssi))
-            {
-                for(int k = LAST_AP -1; k > j; k--) {
-                    ap[k] = ap[k-1];
+        ap_t *ap_last = NULL;
+        for(ap_ptr = ap; ap_ptr != NULL; ap_last = ap_ptr, ap_ptr = ap_ptr->next) {
+            if(network_idx >= 0) {
+                //AP is Wifi AP
+                if (ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi <= ap_ptr->rssi) {
+                   continue;
                 }
-                ap[j].rssi = rssi;
-                ap[j].ssid_idx = network_idx;
-                strlcpy(ap[j].bssid, WiFi.BSSIDstr(i).c_str(), sizeof(ap[j].bssid));
-                break;
+            } else {
+                //AP is mesh node
+                if (ap_ptr->ssid_idx != NETWORK_MESH_NODE || rssi <= ap_ptr->rssi) {
+                   continue;
+                }
+            }
+            next_ap->next = ap_ptr->next;
+            ap_ptr->next = next_ap;
+            break;
+        }
+        if (! ap_ptr) {
+            //Didn't insert this AP, so add it to the end;
+            next_ap->next = NULL;
+            if (ap_last) {
+                ap_last->next = next_ap;
+            } else {
+                ap = next_ap;
             }
         }
     }
+    ap_ptr = ap;
 }
 
 int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
@@ -422,42 +455,51 @@ void ESP8266MQTTMesh::connect() {
     connecting = false;
     retry_connect = 1;
     lastReconnect = millis();
-    if (scanning || ap_idx >= LAST_AP ||  ap[ap_idx].ssid_idx == NETWORK_LAST_INDEX) {
+    if (scanning || ! ap_ptr) {
         scan();
-        if (ap_idx >= LAST_AP) {
-            // We got a disconnect during scan, we've been rescheduled already
-            return;
-        }
-    } if (scanning) {
+    }
+    if (scanning) {
         schedule_connect(0.5);
         return;
     }
-    if (ap[ap_idx].ssid_idx == NETWORK_LAST_INDEX) {
+    if (! ap_ptr) {
         // No networks found, try again
         schedule_connect();
         return;
-    }    
-    for (int i = 0; i < LAST_AP; i++) {
-        if (ap[i].ssid_idx == NETWORK_LAST_INDEX)
-            break;
-        dbgPrintln(EMMDBG_WIFI, String(i) + String(i == ap_idx ? " * " : "   ") + String(ap[i].bssid) + " " + String(ap[i].rssi));
     }
+    int i = 0;
+    for (ap_t *p = ap; p != NULL; p = p->next, i++) {
+        dbgPrintln(EMMDBG_WIFI, String(i) + String(p == ap_ptr ? " * " : "   ") + mac_str(p->bssid) + " " + String(p->rssi));
+    }
+    char _mesh_ssid[32];
     const char *ssid;
     const char *password;
-    if (ap[ap_idx].ssid_idx == NETWORK_MESH_NODE) {
+    if (ap_ptr->ssid_idx == NETWORK_MESH_NODE) {
         //This is a mesh node
-        ssid = mesh_ssid;
+        ssid = build_mesh_ssid(_mesh_ssid, ap_ptr->bssid);
         password = mesh_password;
         meshConnect = true;
     } else {
-        ssid = networks[ap[ap_idx].ssid_idx].ssid;
-        password = networks[ap[ap_idx].ssid_idx].password;
+        ssid = networks[ap_ptr->ssid_idx].ssid;
+        password = networks[ap_ptr->ssid_idx].password;
         meshConnect = false;
     }
-    dbgPrintln(EMMDBG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + String(ap[ap_idx].bssid) + "'");
+    dbgPrintln(EMMDBG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + mac_str(ap_ptr->bssid) + "'");
     WiFi.begin(ssid, password);
     connecting = true;
     lastStatus = lastReconnect;
+}
+String ESP8266MQTTMesh::mac_str(uint8_t *bssid) {
+    char mac[19];
+    sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+    return String(mac);
+}
+const char *ESP8266MQTTMesh::build_mesh_ssid(char buf[32], uint8_t *mac) {
+    char chipid[8];
+    sprintf(chipid, "_%02x%02x%02x", mac[3], mac[4], mac[5]);
+    strlcpy(buf, mesh_ssid, sizeof(buf)-7);
+    strlcat(buf, chipid, sizeof(buf));
+    return buf;
 }
 
 void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
@@ -550,8 +592,11 @@ void ESP8266MQTTMesh::setup_AP() {
     IPAddress apSubmask(255, 255, 255, 0);
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(apIP, apGateway, apSubmask);
-    WiFi.softAP(mesh_ssid, mesh_password, WiFi.channel(), 1);
-    dbgPrintln(EMMDBG_WIFI, "Initialized AP as '" + String(mesh_ssid) + "'  IP '" + apIP.toString() + "'");
+    char _mesh_ssid[32];
+    uint8_t mac[6];
+    build_mesh_ssid(_mesh_ssid, WiFi.softAPmacAddress(mac));
+    WiFi.softAP(_mesh_ssid, mesh_password, WiFi.channel(), 1);
+    dbgPrintln(EMMDBG_WIFI, "Initialized AP as '" + String(_mesh_ssid) + "'  IP '" + apIP.toString() + "'");
     connecting = false; //Connection complete
     AP_ready = true;
 }
@@ -891,15 +936,16 @@ void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& e
     dbgPrintln(EMMDBG_WIFI, "Disconnected from Wi-Fi: " + event.ssid + " because: " + String(event.reason));
     WiFi.disconnect();
     if (! connecting) {
-        ap_idx = LAST_AP;
+        ap_ptr = NULL;
     } else if (event.reason == WIFI_DISCONNECT_REASON_ASSOC_TOOMANY  && retry_connect) {
         // If we rebooted without a clean shutdown, we may still be associated with this AP, in which case
         // we'll be booted and should try again
         retry_connect--;
     } else {
-        ap_idx++;
+        ap_ptr = ap_ptr->next;
     }
-    schedule_connect();
+    if (! scanning)
+        schedule_connect();
 }
 
 //void ESP8266MQTTMesh::onDHCPTimeout() {

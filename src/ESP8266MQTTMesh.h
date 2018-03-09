@@ -85,12 +85,12 @@ typedef struct {
     byte         md5[16];
 } ota_info_t;
 
-typedef struct {
-    char bssid[19];
-    int  ssid_idx;
-    int  rssi;
+typedef struct ap_t {
+    struct ap_t *next;
+    int32_t rssi;
+    uint8_t bssid[6];
+    int16_t ssid_idx;
 } ap_t;
-#define LAST_AP 5
 
 typedef struct {
     const char *ssid;
@@ -140,8 +140,9 @@ private:
     Ticker schedule;
 
     int retry_connect;
-    ap_t ap[LAST_AP];
-    int ap_idx = 0;
+    ap_t *ap = NULL;
+    ap_t *ap_ptr;
+    ap_t *ap_unused = NULL;
     char myID[10];
     char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE];
     char *bufptr[ESP8266_NUM_CLIENTS+1];
@@ -168,6 +169,8 @@ private:
     void scan();
     void connect();
     static void connect(ESP8266MQTTMesh *e) { e->connect(); };
+    String mac_str(uint8_t *bssid);
+    const char *build_mesh_ssid(char buf[32], uint8_t *mac);
     void schedule_connect(float delay = 5.0);
     void connect_mqtt();
     void shutdown_AP();
