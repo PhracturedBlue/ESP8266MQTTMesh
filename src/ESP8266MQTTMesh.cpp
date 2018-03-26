@@ -721,20 +721,13 @@ bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int 
 
 void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
 {
-    char id[9];
+    char id[100];
     strlcpy(msg, prefix, len);
     if (strlen(prefix)) {
         strlcat(msg, " ", len);
     }
-    strlcat(msg, "ChipID: ", len);
-    strlcat(msg, "ChipID: 0x", len);
-    itoa(_chipID, id, 16);
+    os_sprintf(id, "ChipID: %08X FW: ID-%04X v%s", _chipID, firmware_id, firmware_ver);
     strlcat(msg, id, len);
-    strlcat(msg, " FW: 0x", len);
-    itoa(firmware_id, id, 16);
-    strlcat(msg, id, len);
-    strlcat(msg, " : ", len);
-    strlcat(msg, firmware_ver, len);
 }
 
 void ESP8266MQTTMesh::handle_fw(const char *cmd) {
