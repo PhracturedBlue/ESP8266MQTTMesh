@@ -890,11 +890,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         // If this is a broadcast OTA update, this would never go through
         //publish("ota/flash", "Success");
 
-        shutdown_AP();
-        mqttClient.disconnect();
-        delay(100);
-        ESP.restart();
-        die();
+        schedule.once(2, reboot, this);
     }
     else {
         char *end;
