@@ -945,8 +945,12 @@ void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& e
         // If we rebooted without a clean shutdown, we may still be associated with this AP, in which case
         // we'll be booted and should try again
         retry_connect--;
-    } else {
-        ap_ptr = ap_ptr->next;
+    } else if (event.reason >= WIFI_DISCONNECT_REASON_BEACON_TIMEOUT) {
+        // if password is wrong onWifiDisconnect fires 2 times:
+        // 15   WIFI_DISCONNECT_REASON_4WAY_HANDSHAKE_TIMEOUT
+        // 202  WIFI_DISCONNECT_REASON_AUTH_FAIL
+        if (ap_ptr != NULL)
+            ap_ptr = ap_ptr->next;
     }
     if (! scanning)
         schedule_connect();
