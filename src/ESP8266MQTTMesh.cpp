@@ -943,11 +943,11 @@ void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& e
 //}
 
 void ESP8266MQTTMesh::onAPConnect(const WiFiEventSoftAPModeStationConnected& ip) {
-    dbgPrintln(EMMDBG_WIFI, "Got connection from Station");
+    dbgPrintln(EMMDBG_WIFI, "Got connection from Station " + mac_str((uint8_t*)ip.mac));
 }
 
 void ESP8266MQTTMesh::onAPDisconnect(const WiFiEventSoftAPModeStationDisconnected& ip) {
-    dbgPrintln(EMMDBG_WIFI, "Got disconnection from Station");
+    dbgPrintln(EMMDBG_WIFI, "Got disconnection from Station " + mac_str((uint8_t*)ip.mac));
 }
 
 void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
