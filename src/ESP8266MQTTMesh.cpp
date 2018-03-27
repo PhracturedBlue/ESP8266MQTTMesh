@@ -708,7 +708,7 @@ void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
     if (strlen(prefix)) {
         strlcat(msg, " ", len);
     }
-    os_sprintf(id, "ChipID: %08X FW: ID-%04X v%s", _chipID, firmware_id, firmware_ver);
+    os_sprintf(id, "ChipID:%06X FirmwareID:%04X v%s IP:%s %s", _chipID, firmware_id, firmware_ver, WiFi.localIP().toString().c_str(), meshConnect ? "mesh" : "");
     strlcat(msg, id, len);
 }
 
