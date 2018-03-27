@@ -398,18 +398,15 @@ void ESP8266MQTTMesh::scan() {
                    continue;
                 }
             }
-            next_ap->next = ap_ptr->next;
-            ap_ptr->next = next_ap;
             break;
         }
-        if (! ap_ptr) {
-            //Didn't insert this AP, so add it to the end;
-            next_ap->next = NULL;
-            if (ap_last) {
-                ap_last->next = next_ap;
-            } else {
-                ap = next_ap;
-            }
+        //Insert next_ap before ap_ptr (i.e. at last_ap)
+        next_ap->next = ap_ptr;
+        if (ap_last) {
+            ap_last->next = next_ap;
+        } else {
+            //ap was empty, so create it
+            ap = next_ap;
         }
     }
     ap_ptr = ap;
