@@ -794,7 +794,7 @@ void ESP8266MQTTMesh::erase_sector() {
     //erase flash area here
     ESP.flashEraseSector(nextErase--);
     if (nextErase >= start) {
-        schedule.once(0.0, erase_sector, this);
+        schedule.once(0.001, erase_sector, this);
     } else {
         nextErase = 0;
         char deltaStr[10];
