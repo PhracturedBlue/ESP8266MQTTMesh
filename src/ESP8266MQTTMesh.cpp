@@ -46,9 +46,11 @@ enum {
     #define IS_GATEWAY (1)
 #endif
 
+#define NEXT_STATION(station_list) STAILQ_NEXT(station_list, next)
+
 //#define EMMDBG_LEVEL (EMMDBG_WIFI | EMMDBG_MQTT | EMMDBG_OTA)
 #ifndef EMMDBG_LEVEL
-  #define EMMDBG_LEVEL EMMDBG_ALL_EXTRA
+  #define EMMDBG_LEVEL EMMDBG_ALL
 #endif
 
 #define dbgPrintln(lvl, msg) if (((lvl) & (EMMDBG_LEVEL)) == (lvl)) Serial.println("[" + String(__FUNCTION__) + "] " + msg)
@@ -360,18 +362,18 @@ void ESP8266MQTTMesh::scan() {
             network_idx = match_networks(WiFi.SSID(i).c_str(), WiFi.BSSIDstr(i).c_str());
         }
         if(network_idx == NETWORK_MESH_NODE) {
-            if (WiFi.SSID(i).length()) { //Mesh Nodes have no SSID, so here are only "real" Acess Points, which did not matched the AP List
-                dbgPrintln(EMMDBG_WIFI, "Did not match SSID list");
+            if (WiFi.SSID(i).length()) {
+                dbgPrintln(EMMDBG_WIFI_EXTRA, "Did not match SSID list");
                 continue;
-            } else { //Here the Mesh Nodes are handled
-                if (! verify_bssid(WiFi.BSSID(i))) { //Check if the Node is a Mesh Node, if not just ignore this Signal
-                    dbgPrintln(EMMDBG_WIFI, "Failed to match BSSID");
+            } else {
+                if (! verify_bssid(WiFi.BSSID(i))) {
+                    dbgPrintln(EMMDBG_WIFI_EXTRA, "Failed to match BSSID");
                     continue;
                 }
             }
         }
         ap_t *next_ap;
-        if (ap_unused == NULL) {
+        if (! ap_unused) {
             next_ap = new ap_t;
         } else {
             next_ap =ap_unused;
@@ -385,23 +387,18 @@ void ESP8266MQTTMesh::scan() {
         //sort by RSSI
         ap_t *ap_last = NULL;
         for(ap_ptr = ap; ap_ptr != NULL; ap_last = ap_ptr, ap_ptr = ap_ptr->next) {
-            if(network_idx != NETWORK_MESH_NODE) {
-                //Tested Signal is Wifi AP
-                if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE && //Current Signal is Mesh Node
-                     (rssi >= -80 || rssi >= ap_ptr->rssi))|| //and Signal under Test to direct AP have to be quite decent or at least better then current one
-                     ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi >= ap_ptr->rssi)//or both are Ap Points, but tested one have stronger Signal
-                {
-                    break;
+            if(network_idx >= 0) {
+                //AP is Wifi AP
+                if (ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi <= ap_ptr->rssi) {
+                   continue;
                 }
             } else {
-                //Tested Signal is mesh node
-                if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE || //if Actual Node is Mesh Node
-                    (ap_ptr->ssid_idx != NETWORK_MESH_NODE && ap_ptr->rssi <= -80)) && //or is AP, but with weak Signal
-                      rssi >= ap_ptr->rssi) //and in either Way have better Connection then actuall one
-                {
-                    break;
+                //AP is mesh node
+                if (ap_ptr->ssid_idx != NETWORK_MESH_NODE || rssi <= ap_ptr->rssi) {
+                   continue;
                 }
             }
+            break;
         }
         //Insert next_ap before ap_ptr (i.e. at last_ap)
         next_ap->next = ap_ptr;
@@ -443,7 +440,7 @@ int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
 }
 
 void ESP8266MQTTMesh::schedule_connect(float delay) {
-    dbgPrintln(EMMDBG_WIFI, "Scheduling reconnect for " + String(delay,2)+ " seconds from now");
+    dbgPrintln(EMMDBG_WIFI_EXTRA, "Scheduling reconnect for " + String(delay,2)+ " seconds from now");
     schedule.once(delay, connect, this);
 }
 
@@ -525,26 +522,14 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   int myIDLen = strlen(myID);
   if(strstr(subtopic, myID) == subtopic) {
       //Only handle messages addressed to this node
-      HandleMessages(subtopic + myIDLen, msg);
+      callback(subtopic + myIDLen, msg);
   }
   else if(strstr(subtopic, "broadcast/") == subtopic) {
       //Or messages sent to all nodes
-      HandleMessages(subtopic + 10, msg);
+      callback(subtopic + 10, msg);
   }
 }
 
-void ESP8266MQTTMesh::HandleMessages(const char *topic, const char *msg) {
-  if(strstr(topic,"Ping") == topic){
-    dbgPrintln(EMMDBG_MSG, "answering Ping!");
-    String topic = "Ping";
-    publish(topic.c_str(), String(1).c_str());
-  }else if(strstr(topic,"Restart") == topic){
-    dbgPrintln(EMMDBG_MSG, "Got Restart Command, restarting now");
-    die();
-  }else{
-    callback(topic, msg);
-  }
-}
 
 void ESP8266MQTTMesh::connect_mqtt() {
     dbgPrintln(EMMDBG_MQTT, "Attempting MQTT connection (" + mqtt_server + ":" + String(mqtt_port) + ")...");
@@ -592,16 +577,13 @@ void ESP8266MQTTMesh::setup_AP() {
     if (AP_ready)
         return;
     
-    uint octet2 = WiFi.gatewayIP()[1] + 1;
-    if (octet2==255) {
-        octet2++;
-    }
-    if (octet2==0) {
-        octet2++;
+    uint octet3 = WiFi.gatewayIP()[2] + 1;
+    if (! octet3) {
+        octet3++;
     }
     IPAddress apIP(WiFi.gatewayIP()[0],
-                   octet2,
-                   1,
+                   WiFi.gatewayIP()[1],
+                   octet3,
                    1);
     IPAddress apGateway(apIP);
     IPAddress apSubmask(255, 255, 255, 0);
@@ -656,7 +638,7 @@ void ESP8266MQTTMesh::broadcast_message(const char *topicOrMsg, const char *msg)
 }
 
 void ESP8266MQTTMesh::handle_client_data(int idx, char *rawdata) {
-            dbgPrintln(EMMDBG_MQTT, "Received: msg from " + espClient[idx]->remoteIP().toString() + " on " + (idx == 0 ? "STA" : "AP"));
+            dbgPrintln(EMMDBG_MQTT_EXTRA, "Received: msg from " + espClient[idx]->remoteIP().toString() + " on " + (idx == 0 ? "STA" : "AP"));
             const char *data = rawdata + (idx ? 1 : 0);
             dbgPrintln(EMMDBG_MQTT_EXTRA, "--> '" + String(data) + "'");
             char topic[64];
@@ -810,8 +792,8 @@ char * ESP8266MQTTMesh::md5(const uint8_t *msg, int len) {
 void ESP8266MQTTMesh::erase_sector() {
     int start = freeSpaceStart / FLASH_SECTOR_SIZE;
     //erase flash area here
+    ESP.flashEraseSector(nextErase--);
     if (nextErase >= start) {
-        ESP.flashEraseSector(nextErase--);
         schedule.once(0.0, erase_sector, this);
     } else {
         nextErase = 0;
@@ -833,7 +815,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         char *end;
         unsigned int id = strtoul(cmd,&end, 16);
         if (id != firmware_id || *end != '/') {
-            dbgPrintln(EMMDBG_OTA, "Ignoring OTA because firmwareID did not match " + String(firmware_id, HEX));
+            dbgPrintln(EMMDBG_OTA_EXTRA, "Ignoring OTA because firmwareID did not match " + String(firmware_id, HEX));
             return;
         }
         cmd += (end - cmd) + 1; //skip ID
@@ -906,7 +888,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         }
         dbgPrintln(EMMDBG_OTA_EXTRA, "Got " + String(len) + " bytes FW @ " + String(address, HEX));
         bool ok = ESP.flashWrite(freeSpaceStart + address, (uint32_t*) data, len);
-        dbgPrintln(EMMDBG_OTA, "Wrote " + String(len) + " bytes in " +  String((micros() - t) / 1000000.0, 6) + " seconds");
+        dbgPrintln(EMMDBG_OTA, "Wrote " + String(len) + " bytes @" + String(address, HEX) + " in " + String((micros() - t) / 1000000.0, 6) + " seconds");
         if (pingback) {
             char topic[17];
             strlcpy(topic, "ota/md5/", sizeof(topic));
