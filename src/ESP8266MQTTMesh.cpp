@@ -953,11 +953,11 @@ void ESP8266MQTTMesh::onAPDisconnect(const WiFiEventSoftAPModeStationDisconnecte
 void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
     dbgPrintln(EMMDBG_MQTT, "MQTT Connected");
     // Once connected, publish an announcement...
-    char msg[64];
+    char msg[128];
     get_fw_string(msg, sizeof(msg), "Connected");
     //strlcpy(publishMsg, outTopic, sizeof(publishMsg));
     //strlcat(publishMsg, WiFi.localIP().toString().c_str(), sizeof(publishMsg));
-    mqttClient.publish("connect", 0, false, msg);
+    publish(outTopic, "", "connect", msg, MSG_TYPE_NONE);
     // ... and resubscribe
     char subscribe[TOPIC_LEN];
     strlcpy(subscribe, inTopic, sizeof(subscribe));
@@ -1073,6 +1073,9 @@ void ESP8266MQTTMesh::onConnect(AsyncClient* c) {
         }
     }
 #endif
+    char msg[128];
+    get_fw_string(msg, sizeof(msg), "Connected");
+    publish(outTopic, "", "connect", msg, MSG_TYPE_NONE);
     send_connected_msg();
     setup_AP();
 }
