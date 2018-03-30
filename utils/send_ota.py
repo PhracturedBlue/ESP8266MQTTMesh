@@ -77,7 +77,9 @@ def wait_for(nodes, msgtype, maxTime, retries=0, pubcmd=None):
                 startTime = time.time()
             else:
                 print("{} node(s) missed the message and no retires left".format(len(nodes) - len(seen.keys())))
-        if nodes and len(seen.keys()) == len(nodes):
+        if nodes and len(seen.keys()) == len(nodes): #if the Nodes are getting updated by their Module ID
+            break
+        if not nodes and seen: #if the Nodes should get updated by their Software ID
             break
     #print("Elapsed time waiting for {} messages: {} seconds".format(msgtype, time.time() - origTime))
     return seen
