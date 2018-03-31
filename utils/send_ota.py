@@ -55,7 +55,7 @@ def on_message(client, userdata, msg):
         pass
         
 
-def wait_for(nodes, msgtype, maxTime, retries=0, pubcmd=None):
+def wait_for(nodes, msgtype, maxTime):
     seen = {}
     origTime = time.time()
     startTime = origTime
@@ -70,16 +70,10 @@ def wait_for(nodes, msgtype, maxTime, retries=0, pubcmd=None):
         except queue.Empty:
             if time.time() - startTime < maxTime:
                 continue
-            if retries:
-                retries -= 1
-                print("{} node(s) missed the message, retrying".format(len(nodes) - len(seen.keys())))
-                client.publish(pubcmd[0], pubcmd[1])
-                startTime = time.time()
-            else:
-                print("{} node(s) missed the message and no retires left".format(len(nodes) - len(seen.keys())))
-        if nodes and len(seen.keys()) == len(nodes): #if the Nodes are getting updated by their Module ID
+            if nodes:
+                print("{} node(s) missed the message".format(len(nodes) - len(seen.keys())))
             break
-        if not nodes and seen: #if the Nodes should get updated by their Software ID
+        if nodes and len(seen.keys()) == len(nodes): #if the Nodes are getting updated by their Module ID
             break
     #print("Elapsed time waiting for {} messages: {} seconds".format(msgtype, time.time() - origTime))
     return seen
@@ -90,20 +84,31 @@ def send_firmware(client, data, nodes):
     print("Erasing...")
     client.publish("{}start".format(send_topic), payload)
     nodes = list(wait_for(nodes, 'erase', 10).keys())
+    if not nodes:
+        print("No nodes responded to erase.  Aborting")
+        sys.exit(1)
     print("Updating firmware on the following nodes:\n\t{}".format("\n\t".join(nodes)))
     pos = 0
     while len(data):
         d = data[0:768]
         b64d = base64.b64encode(d)
         data = data[768:]
-        client.publish("{}{}".format(send_topic, str(pos)), b64d)
+        topic = "{}{}".format(send_topic, str(pos))
+        client.publish(topic, b64d)
         expected_md5 = hashlib.md5(d).hexdigest().encode('utf-8')
+        retries = 0
         seen = {}
-        retries = 1
-        seen = wait_for(nodes, 'md5', 1.0, 1, ["{}{}".format(send_topic, str(pos)), b64d])
+        while True:
+            seen.update(wait_for(nodes, 'md5', 10.0))
+            if len(seen.keys()) == len(nodes):
+                break
+            if retries == 0:
+                break
+            client.publish(topic, b64d)
+            retries -= 1
         for node in nodes:
             if node not in seen:
-                print("No MD5 found for {} at 0x{}".format(node, pos))
+                print("No MD5 found for {} at 0x{} (expected {})".format(node, pos, expected_md5))
                 return
             addr = int(seen[node][2], 16)
             md5 = seen[node][3]
