@@ -1001,11 +1001,13 @@ void ESP8266MQTTMesh::onMqttUnsubscribe(uint16_t packetId) {
 }
 
 void ESP8266MQTTMesh::onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
-  memcpy(inbuffer[0], payload, len);
-  inbuffer[0][len]= 0;
-  dbgPrintln(EMMDBG_MQTT_EXTRA, "Message arrived [" + String(topic) + "] '" + String(inbuffer[0]) + "'");
-  broadcast_message(topic, inbuffer[0]);
-  parse_message(topic, inbuffer[0]);
+  memcpy(&inbuffer[0][index], payload, len);
+  inbuffer[0][total] = 0;
+  if (index + len >= total) {
+    dbgPrintln(EMMDBG_MQTT_EXTRA, "Message arrived [" + String(topic) + "] '" + String(inbuffer[0]) + "'");
+    broadcast_message(topic, inbuffer[0]);
+    parse_message(topic, inbuffer[0]);
+  }
 }
 
 void ESP8266MQTTMesh::onMqttPublish(uint16_t packetId) {
