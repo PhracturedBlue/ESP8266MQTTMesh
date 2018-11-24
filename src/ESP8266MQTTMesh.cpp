@@ -53,8 +53,12 @@ enum {
   #define EMMDBG_LEVEL EMMDBG_ALL
 #endif
 
-#define dbgPrintln(lvl, msg) if (((lvl) & (EMMDBG_LEVEL)) == (lvl)) Serial.println("[" + String(__FUNCTION__) + "] " + msg)
-size_t mesh_strlcat (char *dst, const char *src, size_t len) {
+#define dbgPrintln(lvl, msg)               \
+    if (((lvl) & (EMMDBG_LEVEL)) == (lvl)) \
+    Serial.println("[" + String(__FUNCTION__) + "] " + msg)
+
+size_t mesh_strlcat(char* dst, const char* src, size_t len)
+{
     size_t slen = strlen(dst);
     return strlcpy(dst + slen, src, len - slen);
 }
@@ -71,14 +75,14 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
 #endif
                     const char *inTopic, const char *outTopic
                     ) :
-        networks(networks),
-        mqtt_server(mqtt_server),
-        mqtt_port(mqtt_port),
-        mqtt_username(mqtt_username),
-        mqtt_password(mqtt_password),
         firmware_id(firmware_id),
         firmware_ver(firmware_ver),
+        networks(networks),
         mesh_ssid(mesh_ssid),
+        mqtt_server(mqtt_server),
+        mqtt_username(mqtt_username),
+        mqtt_password(mqtt_password),
+        mqtt_port(mqtt_port),
         mesh_port(mesh_port),
 #if ASYNC_TCP_SSL_ENABLED
         mqtt_secure(mqtt_secure),
@@ -352,9 +356,7 @@ void ESP8266MQTTMesh::scan() {
     }
     ap = NULL;
 
-    int ssid_idx;
     for(int i = 0; i < numberOfNetworksFound; i++) {
-        bool found = false;
         int network_idx = NETWORK_MESH_NODE;
         int rssi = WiFi.RSSI(i);
         dbgPrintln(EMMDBG_WIFI, "Found SSID: '" + WiFi.SSID(i) + "' BSSID '" + WiFi.BSSIDstr(i) + "'" + " RSSI: " + String(rssi));
@@ -607,9 +609,6 @@ void ESP8266MQTTMesh::send_connected_msg() {
 }
 
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
-    int topicLen = strlen(topicOrMsg);
-    int msgLen = 0;
-    int len = topicLen;
     char msgTypeStr[2];
     if (msgType == 0) {
         msgType = MSG_TYPE_INVALID;
@@ -682,7 +681,7 @@ uint16_t ESP8266MQTTMesh::mqtt_publish(const char *topic, const char *msg, uint8
     {
         qos = msgType - MSG_TYPE_QOS_0;
     }
-    mqttClient.publish(topic, qos, retain, msg);
+    return mqttClient.publish(topic, qos, retain, msg);
 }
 
 bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int keylen, const char **value) {
@@ -713,14 +712,14 @@ void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
 }
 
 void ESP8266MQTTMesh::handle_fw(const char *cmd) {
-    int len;
-    if(strstr(cmd, myID) == cmd) {
-        len = strlen(myID);
-    } else if (strstr(cmd, "broadcast") == cmd) {
-        len = 9;
-    } else {
-        return;
-    }
+    // int len;
+    // if(strstr(cmd, myID) == cmd) {
+    //     len = strlen(myID);
+    // } else if (strstr(cmd, "broadcast") == cmd) {
+    //     len = 9;
+    // } else {
+    //     return;
+    // }
     char msg[64];
     get_fw_string(msg, sizeof(msg), "");
     publish("fw", msg);
@@ -790,7 +789,7 @@ char * ESP8266MQTTMesh::md5(const uint8_t *msg, int len) {
     return out;
 }
 void ESP8266MQTTMesh::erase_sector() {
-    int start = freeSpaceStart / FLASH_SECTOR_SIZE;
+    uint32_t start = freeSpaceStart / FLASH_SECTOR_SIZE;
     //erase flash area here
     ESP.flashEraseSector(nextErase--);
     if (nextErase >= start) {
@@ -1115,7 +1114,7 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
     for (int idx = meshConnect ? 0 : 1; idx <= ESP8266_NUM_CLIENTS; idx++) {
         if (espClient[idx] == c) {
             char *dptr = (char *)data;
-            for (int i = 0; i < len; i++) {
+            for (size_t i = 0; i < len; i++) {
                 *bufptr[idx]++ = dptr[i];
                 if(! dptr[i]) {
                     handle_client_data(idx, inbuffer[idx]);
