@@ -176,6 +176,7 @@ private:
     void shutdown_AP();
     void setup_AP();
     void handle_client_data(int idx, char *data);
+    void HandleMessages(const char *topic, const char *msg);
     void parse_message(const char *topic, const char *msg);
     void mqtt_callback(const char* topic, const byte* payload, unsigned int length);
     uint16_t mqtt_publish(const char *topic, const char *msg, uint8_t msgType);
