@@ -501,18 +501,6 @@ const char *ESP8266MQTTMesh::build_mesh_ssid(char buf[32], uint8_t *mac) {
     return buf;
 }
 
-void ESP8266MQTTMesh::HandleMessages(const char *topic, const char *msg) {
-  if(strstr(topic,"Ping") == topic){
-    String topic = "Ping";
-    publish(topic.c_str(), String(1).c_str());
-  }else if(strstr(topic,"Restart") == topic){
-    ESP.restart();
-    while(1){}
-  }else{
-    callback(topic, msg);
-  }
-}
-
 void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   int inTopicLen = strlen(inTopic);
   if (strstr(topic, inTopic) != topic) {
@@ -541,6 +529,19 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   else if(strstr(subtopic, "broadcast/") == subtopic) {
       //Or messages sent to all nodes
       HandleMessages(subtopic + 10, msg);
+  }
+}
+
+void ESP8266MQTTMesh::HandleMessages(const char *topic, const char *msg) {
+  if(strstr(topic,"Ping") == topic){
+    dbgPrintln(EMMDBG_MSG, "answering Ping!");
+    String topic = "Ping";
+    publish(topic.c_str(), String(1).c_str());
+  }else if(strstr(topic,"Restart") == topic){
+    dbgPrintln(EMMDBG_MSG, "Got Restart Command, restarting now");
+    die();
+  }else{
+    callback(topic, msg);
   }
 }
 
