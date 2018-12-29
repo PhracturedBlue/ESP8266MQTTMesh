@@ -394,7 +394,9 @@ void ESP8266MQTTMesh::scan() {
                 }
             } else {
                 //AP is mesh node
-                if (ap_ptr->ssid_idx != NETWORK_MESH_NODE || rssi <= ap_ptr->rssi) {
+                if (
+                  ((ap_ptr->ssid_idx != NETWORK_MESH_NODE) && ap_ptr->rssi <= -75) ||
+                  rssi <= ap_ptr->rssi) {
                    continue;
                 }
             }
