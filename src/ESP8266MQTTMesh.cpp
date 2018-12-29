@@ -534,11 +534,11 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   int myIDLen = strlen(myID);
   if(strstr(subtopic, myID) == subtopic) {
       //Only handle messages addressed to this node
-      HandleMessages(subtopic + myIDLen, msg);
+      this.HandleMessages(subtopic + myIDLen, msg);
   }
   else if(strstr(subtopic, "broadcast/") == subtopic) {
       //Or messages sent to all nodes
-      HandleMessages(subtopic + 10, msg);
+      this.HandleMessages(subtopic + 10, msg);
   }
 }
 
