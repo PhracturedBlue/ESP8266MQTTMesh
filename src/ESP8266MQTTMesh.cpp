@@ -536,7 +536,7 @@ void ESP8266MQTTMesh::HandleMessages(const char *topic, const char *msg) {
   if(strstr(topic,"Ping") == topic){
     dbgPrintln(EMMDBG_MSG, "answering Ping!");
     String topic = "Ping";
-    publish(topic.c_str(), String(1).c_str());
+    publish_node(topic.c_str(), String(1).c_str());
   }else if(strstr(topic,"Restart") == topic){
     dbgPrintln(EMMDBG_MSG, "Got Restart Command, restarting now");
     die();
