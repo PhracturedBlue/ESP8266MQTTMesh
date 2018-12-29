@@ -501,6 +501,18 @@ const char *ESP8266MQTTMesh::build_mesh_ssid(char buf[32], uint8_t *mac) {
     return buf;
 }
 
+void ESP8266MQTTMesh::HandleMessages(const char *topic, const char *msg) {
+  if(strstr(topic,"Ping") == topic){
+    String topic = "Ping";
+    publish(topic.c_str(), String(1).c_str());
+  }else if(strstr(topic,"Restart") == topic){
+    ESP.restart();
+    while(1){}
+  }else{
+    callback(topic, msg);
+  }
+}
+
 void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   int inTopicLen = strlen(inTopic);
   if (strstr(topic, inTopic) != topic) {
@@ -531,20 +543,6 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
       HandleMessages(subtopic + 10, msg);
   }
 }
-
-
-void ESP8266MQTTMesh::HandleMessages(const char *topic, const char *msg) {
-  if(strstr(topic,"Ping") == topic){
-    String topic = "Ping";
-    publish(topic.c_str(), String(1).c_str());
-  }else if(strstr(topic,"Restart") == topic){
-    ESP.restart();
-    while(1){}
-  }else{
-    callback(topic, msg);
-  }
-}
-
 
 void ESP8266MQTTMesh::connect_mqtt() {
     dbgPrintln(EMMDBG_MQTT, "Attempting MQTT connection (" + mqtt_server + ":" + String(mqtt_port) + ")...");
