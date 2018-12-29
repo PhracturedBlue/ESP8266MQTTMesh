@@ -524,11 +524,24 @@ void ESP8266MQTTMesh::parse_message(const char *topic, const char *msg) {
   int myIDLen = strlen(myID);
   if(strstr(subtopic, myID) == subtopic) {
       //Only handle messages addressed to this node
-      callback(subtopic + myIDLen, msg);
+      HandleMessages(subtopic + myIDLen, msg);
   }
   else if(strstr(subtopic, "broadcast/") == subtopic) {
       //Or messages sent to all nodes
-      callback(subtopic + 10, msg);
+      HandleMessages(subtopic + 10, msg);
+  }
+}
+
+
+void ESP8266MQTTMesh::HandleMessages(const char *topic, const char *msg) {
+  if(strstr(topic,"Ping") == topic){
+    String topic = "Ping";
+    publish(topic.c_str(), String(1).c_str());
+  }else if(strstr(topic,"Restart") == topic){
+    ESP.restart();
+    while(1){}
+  }else{
+    callback(topic, msg);
   }
 }
 
