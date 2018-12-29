@@ -158,7 +158,7 @@ private:
     std::function<void(const char *topic, const char *msg)> callback;
 
     bool wifiConnected() { return (WiFi.status() == WL_CONNECTED); }
-    void die() { while(1) {} }
+    void die() { ESP.restart(); while(1) {} }
 
     uint32_t lfsr(uint32_t seed, uint8_t b);
     uint32_t encrypt_id(uint32_t id);
