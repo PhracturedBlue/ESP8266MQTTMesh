@@ -362,11 +362,11 @@ void ESP8266MQTTMesh::scan() {
             network_idx = match_networks(WiFi.SSID(i).c_str(), WiFi.BSSIDstr(i).c_str());
         }
         if(network_idx == NETWORK_MESH_NODE) {
-            if (WiFi.SSID(i).length()) {
+            if (WiFi.SSID(i).length()) { //Mesh Nodes have no SSID, so here are only "real" Acess Points, which did not matched the AP List
                 dbgPrintln(EMMDBG_WIFI, "Did not match SSID list");
                 continue;
-            } else {
-                if (! verify_bssid(WiFi.BSSID(i))) {
+            } else { //Here the Mesh Nodes are handled
+                if (! verify_bssid(WiFi.BSSID(i))) { //Check if the Node is a Mesh Node, if not just ignore this Signal
                     dbgPrintln(EMMDBG_WIFI, "Failed to match BSSID");
                     continue;
                 }
@@ -389,14 +389,18 @@ void ESP8266MQTTMesh::scan() {
         for(ap_ptr = ap; ap_ptr != NULL; ap_last = ap_ptr, ap_ptr = ap_ptr->next) {
             if(network_idx >= 0) {
                 //AP is Wifi AP
-                if (ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi <= ap_ptr->rssi) {
+                if ((ap_ptr->ssid_idx != NETWORK_MESH_NODE|| //Tested Signal have to also be Wifi Ap
+                     rssi <= -75)&& //but it can also fall back to a Mesh Node if WIFI Signal from AP is very weak 
+                     rssi <= ap_ptr->rssi)//and in eather Way the new Signal needs a better Connection
+                {
                    continue;
                 }
             } else {
                 //AP is mesh node
-                if (
-                  ((ap_ptr->ssid_idx != NETWORK_MESH_NODE) && ap_ptr->rssi <= -75) ||
-                  rssi <= ap_ptr->rssi) {
+                if (((ap_ptr->ssid_idx != NETWORK_MESH_NODE) && //if Signal is Wifi Acess Point
+                      ap_ptr->rssi <= -75) || //and Signal Strength is not under certain Level
+                      rssi <= ap_ptr->rssi) //or if Signal Strength is better then current one
+                {
                    continue;
                 }
             }
