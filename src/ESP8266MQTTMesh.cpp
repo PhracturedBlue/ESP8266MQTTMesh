@@ -392,7 +392,7 @@ void ESP8266MQTTMesh::scan() {
                 if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE && //Current Signal is Mesh Node
                      (rssi >= -80 || rssi >= ap_ptr->rssi))|| //and Signal under Test to direct AP have to be quite decent or at least better then current one
                      ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi >= ap_ptr->rssi)//or both are Ap Points, but tested one have stronger Signal
-                {
+                {}else{
                    continue;
                 }
             } else {
@@ -400,7 +400,7 @@ void ESP8266MQTTMesh::scan() {
                 if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE || //if Actual Node is Mesh Node
                     (ap_ptr->ssid_idx != NETWORK_MESH_NODE && ap_ptr->rssi <= -80)) && //or is AP, but with weak Signal
                       rssi >= ap_ptr->rssi) //and in either Way have better Connection then actuall one
-                {
+                {}else{
                    continue;
                 }
             }
