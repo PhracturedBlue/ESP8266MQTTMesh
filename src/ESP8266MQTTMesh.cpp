@@ -388,18 +388,18 @@ void ESP8266MQTTMesh::scan() {
         ap_t *ap_last = NULL;
         for(ap_ptr = ap; ap_ptr != NULL; ap_last = ap_ptr, ap_ptr = ap_ptr->next) {
             if(network_idx >= 0) {
-                //AP is Wifi AP
-                if ((ap_ptr->ssid_idx != NETWORK_MESH_NODE|| //Tested Signal have to also be Wifi Ap
-                     rssi <= -75)&& //but it can also fall back to a Mesh Node if WIFI Signal from AP is very weak 
-                     rssi <= ap_ptr->rssi)//and in eather Way the new Signal needs a better Connection
+                //Tested Signal is Wifi AP
+                if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE && //Current Signal is Mesh Node
+                     (rssi >= -80 || rssi >= ap_ptr->rssi))|| //and Signal under Test to direct AP have to be quite decent or at least better then current one
+                     ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi >= ap_ptr->rssi)//or both are Ap Points, but tested one have stronger Signal
                 {
                    continue;
                 }
             } else {
-                //AP is mesh node
-                if (((ap_ptr->ssid_idx != NETWORK_MESH_NODE) && //if Signal is Wifi Acess Point
-                      ap_ptr->rssi <= -75) || //and Signal Strength is not under certain Level
-                      rssi <= ap_ptr->rssi) //or if Signal Strength is better then current one
+                //Tested Signal is mesh node
+                if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE || //if Actual Node is Mesh Node
+                    (ap_ptr->ssid_idx != NETWORK_MESH_NODE && ap_ptr->rssi <= -80)) && //or is AP, but with weak Signal
+                      rssi >= ap_ptr->rssi) //and in either Way have better Connection then actuall one
                 {
                    continue;
                 }
