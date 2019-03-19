@@ -388,14 +388,27 @@ void ESP8266MQTTMesh::scan() {
         ap_t *ap_last = NULL;
         for(ap_ptr = ap; ap_ptr != NULL; ap_last = ap_ptr, ap_ptr = ap_ptr->next) {
             if(network_idx >= 0) {
-                //AP is Wifi AP
-                if (ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi <= ap_ptr->rssi) {
-                   continue;
+                //Tested Signal is Wifi AP
+
+                //Our connected AP is a directAP
+                //   and the signal of the tested directAP is worse (lower then current)
+                //OR tested directAP has bad signal (lower then -80dbm)
+                //   and signal to the current directAP or Meshnode is better
+                //THEN better keep our current connection
+                if((ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi < ap_ptr->rssi)
+                        || (rssi < -80 && rssi < ap_ptr->rssi)) {
+                    continue;
                 }
+
             } else {
-                //AP is mesh node
-                if (ap_ptr->ssid_idx != NETWORK_MESH_NODE || rssi <= ap_ptr->rssi) {
-                   continue;
+                //Tested Signal is Meshnode
+
+                //Our connected AP is a directAP and the signal is okay
+                //Or the signal of the tested Meshnode is worse then our current connection
+                //THEN keep the current connection
+                if((ap_ptr->ssid_idx != NETWORK_MESH_NODE && ap_ptr->rssi > -80)
+                        || rssi < ap_ptr->rssi) {
+                    continue;
                 }
             }
             break;
