@@ -81,8 +81,8 @@ typedef struct {
 } ssl_cert_t;
 
 typedef struct {
-    unsigned int len;
-    byte         md5[16];
+    uint32_t len;
+    byte md5[16];
 } ota_info_t;
 
 typedef struct ap_t {
@@ -105,6 +105,7 @@ class ESP8266MQTTMesh {
 public:
     class Builder;
 private:
+    uint32_t type_node;
     const unsigned int firmware_id;
     const char   *firmware_ver;
     const wifi_conn *networks;
@@ -239,6 +240,7 @@ private:
                     const char *inTopic, const char *outTopic);
 public:
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
+    void setType(uint32_t type);
     void begin();
     void publish(const char *subtopic, const char *msg, enum MSG_TYPE msgCmd = MSG_TYPE_NONE);
     void publish_node(const char *subtopic, const char *msg, enum MSG_TYPE msgCmd = MSG_TYPE_NONE);

@@ -101,8 +101,12 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
         mesh_bssid_key = lfsr(mesh_bssid_key, mesh_password[i]);
     }
     espClient[0] = new AsyncClient();
-    itoa(_chipID, myID, 16);
-    strlcat(myID, "/", sizeof(myID));
+    String tmp = String(_chipID, HEX);
+    tmp.toUpperCase();
+    while (tmp.length() < 6)
+        tmp = "0" + tmp;
+    strlcpy(myID, (tmp + "/").c_str(), sizeof(myID));
+    type_node = 0;
 #if HAS_OTA
     uint32_t usedSize = ESP.getSketchSize();
     // round one sector up
@@ -143,9 +147,9 @@ void ESP8266MQTTMesh::begin() {
     //dbgPrintln(EMMDBG_MSG, "Mesh: " + mesh_secure ? "True" : "False");
     //dbgPrintln(EMMDBG_MSG, "Port: " + String(mesh_port));
 
-    dbgPrintln(EMMDBG_MSG_EXTRA, "Starting Firmware " + String(firmware_id, HEX) + " : " + String(firmware_ver));
+    dbgPrintln(EMMDBG_MSG, "Starting Firmware " + String(firmware_id, HEX) + " : " + String(firmware_ver));
 #if HAS_OTA
-    dbgPrintln(EMMDBG_MSG_EXTRA, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
+    dbgPrintln(EMMDBG_MSG, "OTA Start: 0x" + String(freeSpaceStart, HEX) + " OTA End: 0x" + String(freeSpaceEnd, HEX));
 #endif
     uint8_t mac[6];
     generate_mac(mac, _chipID);
@@ -700,6 +704,11 @@ bool ESP8266MQTTMesh::keyValue(const char *data, char separator, char *key, int 
   return false;
 }
 
+void ESP8266MQTTMesh::setType(unsigned int type)
+{
+    type_node = type;
+}
+
 void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
 {
     char id[100];
@@ -707,7 +716,7 @@ void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
     if (strlen(prefix)) {
         strlcat(msg, " ", len);
     }
-    os_sprintf(id, "ChipID:%06X FirmwareID:%04X v%s IP:%s %s", _chipID, firmware_id, firmware_ver, WiFi.localIP().toString().c_str(), meshConnect ? "mesh" : "");
+    os_sprintf(id, "ChipID:%06X FirmwareID:%04X v%s Type:%04X IP:%s %s", _chipID, firmware_id, firmware_ver, type_node, WiFi.localIP().toString().c_str(), meshConnect ? "mesh" : "");
     strlcat(msg, id, len);
 }
 

@@ -19,7 +19,11 @@ outTopic = topic + ""
 send_topic = ""
 name=""
 passw=""
-q = queue.Queue();
+q = queue.Queue()
+
+TIMEOUT_ERASE = 10
+TIMEOUT_PROGRAM = 5.0
+TIMEOUT_CHECK = 5
 
 def regex(pattern, txt, group):
     group.clear()
@@ -44,18 +48,18 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     #esp8266-out/mesh_esp8266-6/check=MD5 Passed
     match = []
-    if regex(r'/([0-9a-f]+)/ota/erase$', msg.topic, match):
+    if regex(r'/([0-9A-F]+)/ota/erase$', msg.topic, match):
         q.put(["erase", match[0]])
-    elif regex(r'([0-9a-f]+)/ota/md5/([0-9a-f]+)', msg.topic, match):
+    elif regex(r'([0-9A-F]+)/ota/md5/([0-9a-f]+)', msg.topic, match):
         q.put(["md5", match[0], match[1], msg.payload])
-    elif regex(r'([0-9a-f]+)/ota/check$', msg.topic, match):
+    elif regex(r'([0-9A-F]+)/ota/check$', msg.topic, match):
         q.put(["check", match[0], msg.payload])
     else:
-        #print("%s   %-30s = %s" % (str(datetime.datetime.now()), msg.topic, str(msg.payload)));
+        #print("%s   %-30s = %s" % (str(datetime.datetime.now()), msg.topic, str(msg.payload)))
         pass
         
 
-def wait_for(nodes, msgtype, maxTime, retries=0, pubcmd=None):
+def wait_for(nodes, msgtype, maxTime, retries=0, pubcmd=None, client=None):
     seen = {}
     origTime = time.time()
     startTime = origTime
@@ -79,6 +83,7 @@ def wait_for(nodes, msgtype, maxTime, retries=0, pubcmd=None):
                 if not nodes:
                     break
                 print("{} node(s) missed the message and no retires left".format(len(nodes) - len(seen.keys())))
+                raise Exception('Send firmware', 'Device not connect')
         if nodes and len(seen.keys()) == len(nodes):
             break
     #print("Elapsed time waiting for {} messages: {} seconds".format(msgtype, time.time() - origTime))
@@ -89,7 +94,9 @@ def send_firmware(client, data, nodes):
     payload = "md5:%s,len:%d" %(md5.decode(), len(data))
     print("Erasing...")
     client.publish("{}start".format(send_topic), payload)
-    nodes = list(wait_for(nodes, 'erase', 10).keys())
+    nodes = list(wait_for(nodes, 'erase', TIMEOUT_ERASE).keys())
+    if not nodes:
+        raise Exception('Find devices', 'Device not found')
     print("Updating firmware on the following nodes:\n\t{}".format("\n\t".join(nodes)))
     pos = 0
     while len(data):
@@ -99,8 +106,8 @@ def send_firmware(client, data, nodes):
         client.publish("{}{}".format(send_topic, str(pos)), b64d)
         expected_md5 = hashlib.md5(d).hexdigest().encode('utf-8')
         seen = {}
-        retries = 1
-        seen = wait_for(nodes, 'md5', 1.0, 1, ["{}{}".format(send_topic, str(pos)), b64d])
+        retries = 5
+        seen = wait_for(nodes, 'md5', TIMEOUT_PROGRAM, retries, ["{}{}".format(send_topic, str(pos)), b64d], client)
         for node in nodes:
             if node not in seen:
                 print("No MD5 found for {} at 0x{}".format(node, pos))
@@ -119,7 +126,7 @@ def send_firmware(client, data, nodes):
             print("Transmitted %d bytes" % (pos))
     print("Completed send")
     client.publish("{}check".format(send_topic), "")
-    seen = wait_for(nodes, 'check', 5)
+    seen = wait_for(nodes, 'check', TIMEOUT_CHECK)
     err = False
     for node in nodes:
         if node not in seen:
