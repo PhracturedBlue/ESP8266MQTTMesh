@@ -46,8 +46,6 @@ enum {
     #define IS_GATEWAY (1)
 #endif
 
-#define NEXT_STATION(station_list) STAILQ_NEXT(station_list, next)
-
 //#define EMMDBG_LEVEL (EMMDBG_WIFI | EMMDBG_MQTT | EMMDBG_OTA)
 #ifndef EMMDBG_LEVEL
   #define EMMDBG_LEVEL EMMDBG_ALL_EXTRA
@@ -373,7 +371,7 @@ void ESP8266MQTTMesh::scan() {
             }
         }
         ap_t *next_ap;
-        if (! ap_unused) {
+        if (ap_unused == NULL) {
             next_ap = new ap_t;
         } else {
             next_ap =ap_unused;
@@ -387,24 +385,23 @@ void ESP8266MQTTMesh::scan() {
         //sort by RSSI
         ap_t *ap_last = NULL;
         for(ap_ptr = ap; ap_ptr != NULL; ap_last = ap_ptr, ap_ptr = ap_ptr->next) {
-            if(network_idx >= 0) {
+            if(network_idx != NETWORK_MESH_NODE) {
                 //Tested Signal is Wifi AP
                 if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE && //Current Signal is Mesh Node
                      (rssi >= -80 || rssi >= ap_ptr->rssi))|| //and Signal under Test to direct AP have to be quite decent or at least better then current one
                      ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi >= ap_ptr->rssi)//or both are Ap Points, but tested one have stronger Signal
-                {}else{
-                   continue;
+                {
+                    break;
                 }
             } else {
                 //Tested Signal is mesh node
                 if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE || //if Actual Node is Mesh Node
                     (ap_ptr->ssid_idx != NETWORK_MESH_NODE && ap_ptr->rssi <= -80)) && //or is AP, but with weak Signal
                       rssi >= ap_ptr->rssi) //and in either Way have better Connection then actuall one
-                {}else{
-                   continue;
+                {
+                    break;
                 }
             }
-            break;
         }
         //Insert next_ap before ap_ptr (i.e. at last_ap)
         next_ap->next = ap_ptr;
@@ -595,13 +592,16 @@ void ESP8266MQTTMesh::setup_AP() {
     if (AP_ready)
         return;
     
-    uint octet3 = WiFi.gatewayIP()[2] + 1;
-    if (! octet3) {
-        octet3++;
+    uint octet2 = WiFi.gatewayIP()[1] + 1;
+    if (octet2==255) {
+        octet2++;
+    }
+    if (octet2==0) {
+        octet2++;
     }
     IPAddress apIP(WiFi.gatewayIP()[0],
-                   WiFi.gatewayIP()[1],
-                   octet3,
+                   octet2,
+                   1,
                    1);
     IPAddress apGateway(apIP);
     IPAddress apSubmask(255, 255, 255, 0);
@@ -817,8 +817,8 @@ char * ESP8266MQTTMesh::md5(const uint8_t *msg, int len) {
 void ESP8266MQTTMesh::erase_sector() {
     int start = freeSpaceStart / FLASH_SECTOR_SIZE;
     //erase flash area here
-    ESP.flashEraseSector(nextErase--);
     if (nextErase >= start) {
+        ESP.flashEraseSector(nextErase--);
         schedule.once(0.0, erase_sector, this);
     } else {
         nextErase = 0;
