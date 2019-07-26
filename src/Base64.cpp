@@ -98,7 +98,7 @@ int base64_decode(char * output, const char * input, int inputLen) {
       output[decLen++] = a3[j];
     }
   }
-  output[decLen] = '\0';
+  //output[decLen] = '\0'; was a verry bad Idea, because it causes an Overflow in decoding the MD5 Sum and writing String Terminators in the executed Flash by an OTA Update
   return decLen;
 }
 
