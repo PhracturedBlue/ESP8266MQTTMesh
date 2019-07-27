@@ -13,9 +13,9 @@ import re
 import queue
 
 
-topic = "IoT"
-inTopic = topic + "-in"
-outTopic = topic + ""
+topic = "esp8266-"
+inTopic = topic + "in"
+outTopic = topic + "out"
 send_topic = ""
 name=""
 passw=""
