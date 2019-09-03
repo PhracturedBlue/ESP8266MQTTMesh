@@ -623,11 +623,15 @@ void ESP8266MQTTMesh::setup_AP() {
 
 void ESP8266MQTTMesh::send_connected_msg() {
     //The list of nodes is only stored on the broker.  Individual nodes don't knowother node IDs
-    char topic[10];
+    /*char topic[10];
     strlcpy(topic, myID, sizeof(topic));
     topic[strlen(topic)-1] = 0; // Chop off trailing '/'
-    publish(outTopic, "bssid/", topic, WiFi.softAPmacAddress().c_str(), MSG_TYPE_RETAIN_QOS_0);
-    publish("reset_Reason", String(ESP.getResetReason()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    publish(outTopic, "bssid/", topic, WiFi.softAPmacAddress().c_str(), MSG_TYPE_RETAIN_QOS_0);*/
+    publish("info/reset_Reason", String(ESP.getResetReason()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    publish("info/MAC", String(WiFi.macAddress()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    publish("info/MAC_hosted_AP", String(WiFi.softAPmacAddress()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    publish("info/RSSI", String(ap_ptr->rssi).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    publish("info/connectedTo", String(mac_str(ap_ptr->bssid)).c_str(), MSG_TYPE_RETAIN_QOS_0);
 }
 
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
