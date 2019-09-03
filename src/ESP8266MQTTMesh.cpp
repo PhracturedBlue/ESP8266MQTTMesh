@@ -48,7 +48,7 @@ enum {
 
 //#define EMMDBG_LEVEL (EMMDBG_WIFI | EMMDBG_MQTT | EMMDBG_OTA)
 #ifndef EMMDBG_LEVEL
-  #define EMMDBG_LEVEL EMMDBG_ALL
+  #define EMMDBG_LEVEL EMMDBG_ALL_EXTRA
 #endif
 
 #define dbgPrintln(lvl, msg)               \
