@@ -394,7 +394,7 @@ void ESP8266MQTTMesh::scan() {
                 //Tested Signal is Wifi AP
                 if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE && //Current Signal is Mesh Node
                      (rssi >= -80 || rssi >= ap_ptr->rssi))|| //and Signal under Test to direct AP have to be quite decent or at least better then current one
-                     ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi >= ap_ptr->rssi)//or both are Ap Points, but tested one have stronger Signal
+                     (ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi >= ap_ptr->rssi))//or both are Ap Points, but tested one have stronger Signal
                 {
                     break;
                 }
@@ -837,8 +837,6 @@ void ESP8266MQTTMesh::erase_sector() {
 
 void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
     dbgPrintln(EMMDBG_OTA_EXTRA, "OTA cmd " + String(cmd) + " Length: " + String(strlen(msg)));
-    //Should we allow enabling/disabling this?
-    bool pingback = true;
     if(strstr(cmd, myID) == cmd) {
         cmd += strlen(myID);
     } else {
@@ -923,12 +921,10 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         dbgPrintln(EMMDBG_OTA_EXTRA, "Got " + String(len) + " bytes FW @ " + String(address, HEX));
         bool ok = ESP.flashWrite(freeSpaceStart + address, (uint32_t*) data, len);
         dbgPrintln(EMMDBG_OTA, "Wrote " + String(len) + " bytes @" + String(address, HEX) + " in " + String((micros() - t) / 1000000.0, 6) + " seconds");
-        //if (pingback) {
         char topic[17];
         strlcpy(topic, "ota/md5/", sizeof(topic));
         itoa(address, topic + strlen(topic), 16);
         publish(topic, md5(data, len));
-        //}
         if (! ok) {
             dbgPrintln(EMMDBG_MSG, "Failed to write firmware at " + String(freeSpaceStart + address, HEX) + " Length: " + String(len));
         }
