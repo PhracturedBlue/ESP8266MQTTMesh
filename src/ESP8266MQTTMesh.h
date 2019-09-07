@@ -151,6 +151,7 @@ private:
     char msg[50];
     int value = 0;
     bool meshConnect = false;
+    bool wasConnected = false;
     unsigned long lastReconnect = 0;
     unsigned long lastStatus = 0;
     bool connecting = 0;

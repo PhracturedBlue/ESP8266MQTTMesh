@@ -627,9 +627,14 @@ void ESP8266MQTTMesh::send_connected_msg() {
     strlcpy(topic, myID, sizeof(topic));
     topic[strlen(topic)-1] = 0; // Chop off trailing '/'
     publish(outTopic, "bssid/", topic, WiFi.softAPmacAddress().c_str(), MSG_TYPE_RETAIN_QOS_0);*/
-    publish("info/reset_Reason", String(ESP.getResetReason()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    if(wasConnected){
+        publish("info/reset_Reason", String(ESP.getResetReason()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    }else{
+        publish("info/reset_Reason", String("lost_Connection").c_str(), MSG_TYPE_RETAIN_QOS_0);
+    }
     publish("info/MAC", String(WiFi.macAddress()).c_str(), MSG_TYPE_RETAIN_QOS_0);
     publish("info/MAC_hosted_AP", String(WiFi.softAPmacAddress()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    publish("info/IP_local", String(WiFi.localIP()).c_str(), MSG_TYPE_RETAIN_QOS_0);
     publish("info/RSSI", String(ap_ptr->rssi).c_str(), MSG_TYPE_RETAIN_QOS_0);
     publish("info/connectedTo", String(mac_str(ap_ptr->bssid)).c_str(), MSG_TYPE_RETAIN_QOS_0);
 }
@@ -981,12 +986,14 @@ void ESP8266MQTTMesh::onAPDisconnect(const WiFiEventSoftAPModeStationDisconnecte
 
 void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
     dbgPrintln(EMMDBG_MQTT, "MQTT Connected");
+    /*
     // Once connected, publish an announcement...
     char msg[128];
     get_fw_string(msg, sizeof(msg), "Connected");
     //strlcpy(publishMsg, outTopic, sizeof(publishMsg));
     //strlcat(publishMsg, WiFi.localIP().toString().c_str(), sizeof(publishMsg));
     publish(outTopic, "", "connect", msg, MSG_TYPE_NONE);
+     */
     // ... and resubscribe
     char subscribe[TOPIC_LEN];
     strlcpy(subscribe, inTopic, sizeof(subscribe));
@@ -995,6 +1002,7 @@ void ESP8266MQTTMesh::onMqttConnect(bool sessionPresent) {
 
     send_connected_msg();
     setup_AP();
+    wasConnected = true;
 }
 
 void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
@@ -1109,6 +1117,7 @@ void ESP8266MQTTMesh::onConnect(AsyncClient* c) {
     publish(outTopic, "", "connect", msg, MSG_TYPE_NONE);
     send_connected_msg();
     setup_AP();
+    wasConnected = true;
 }
 
 void ESP8266MQTTMesh::onDisconnect(AsyncClient* c) {
