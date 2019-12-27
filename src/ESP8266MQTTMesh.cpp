@@ -200,6 +200,7 @@ void ESP8266MQTTMesh::begin() {
     mqttClient.onMessage(    [this] (char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
                                                                              { this->onMqttMessage(topic, payload, properties, len, index, total); });
     mqttClient.onPublish(    [this] (uint16_t packetId)                      { this->onMqttPublish(packetId); });
+
     mqttClient.setServer(mqtt_server, mqtt_port);
     if (mqtt_username || mqtt_password)
         mqttClient.setCredentials(mqtt_username, mqtt_password);
@@ -448,11 +449,16 @@ int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
 }
 
 void ESP8266MQTTMesh::schedule_connect(float delay) {
+    if(connectScheduled){
+        return
+    }
+    connectScheduled = true;
     dbgPrintln(EMMDBG_WIFI_EXTRA, "Scheduling reconnect for " + String(delay,2)+ " seconds from now");
     schedule.once(delay, connect, this);
 }
 
 void ESP8266MQTTMesh::connect() {
+    connectScheduled = false;
     if (WiFi.isConnected()) {
         dbgPrintln(EMMDBG_WIFI, "Called connect when already connected!");
         return;
@@ -469,7 +475,7 @@ void ESP8266MQTTMesh::connect() {
     }
     if (! ap_ptr) {
         // No networks found, try again
-        schedule_connect();
+        schedule_connect(5.0);
         return;
     }
     int i = 0;
@@ -491,9 +497,11 @@ void ESP8266MQTTMesh::connect() {
     }
     dbgPrintln(EMMDBG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + mac_str(ap_ptr->bssid) + "'");
     WiFi.begin(ssid, password);
+    alreaddyDisconnected = false;
     connecting = true;
     lastStatus = lastReconnect;
 }
+
 String ESP8266MQTTMesh::mac_str(uint8_t *bssid) {
     char mac[19];
     sprintf(mac, "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
@@ -669,7 +677,7 @@ void ESP8266MQTTMesh::broadcast_message(const char *topicOrMsg, const char *msg)
 
 void ESP8266MQTTMesh::handle_client_data(int idx, char *rawdata) {
             dbgPrintln(EMMDBG_MQTT_EXTRA, "Received: msg from " + espClient[idx]->remoteIP().toString() + " on " + (idx == 0 ? "STA" : "AP"));
-            const char *data = rawdata + (idx ? 1 : 0);
+            const char *data = rawdata + (idx ? 1 : 0); //packages from other Modules use the first bit as an Message Type
             dbgPrintln(EMMDBG_MQTT_EXTRA, "--> '" + String(data) + "'");
             char topic[64];
             const char *msg;
@@ -685,6 +693,8 @@ void ESP8266MQTTMesh::handle_client_data(int idx, char *rawdata) {
                 unsigned char msgType = rawdata[0];
                 if (strstr(topic,"/mesh_cmd")  == topic + strlen(topic) - 9) {
                     // We will handle this packet locally
+                    // TODO: implement proper Routing instead of broadcasting each Package! connected Modules can communicate with this one by using the Topic "/mesh_cmd/..."
+                    dbgPrintln(EMMDBG_MQTT, "received unknown Mesh Command from connected Node");
                 } else {
                     if (! meshConnect) {
                         mqtt_publish(topic, msg, msgType);
@@ -948,8 +958,15 @@ void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
 }
 
 void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
-    //Reasons are here: ESP8266WiFiType.h-> WiFiDisconnectReason 
+    //Reasons are here: ESP8266WiFiType.h-> WiFiDisconnectReason
+    if (! connectScheduled) {
+        schedule_connect(2.0);
+    }
     dbgPrintln(EMMDBG_WIFI, "Disconnected from Wi-Fi: " + event.ssid + " because: " + String(event.reason));
+    if (alreaddyDisconnected){ //prevent the Function to fire multiple times on a single Disconnect
+        return;
+    }
+    alreaddyDisconnected = true;
     WiFi.disconnect();
     if (! connecting) {
         ap_ptr = NULL;
@@ -957,15 +974,17 @@ void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& e
         // If we rebooted without a clean shutdown, we may still be associated with this AP, in which case
         // we'll be booted and should try again
         retry_connect--;
-    } else if (event.reason >= WIFI_DISCONNECT_REASON_BEACON_TIMEOUT) {
-        // if password is wrong onWifiDisconnect fires 2 times:
-        // 15   WIFI_DISCONNECT_REASON_4WAY_HANDSHAKE_TIMEOUT
-        // 202  WIFI_DISCONNECT_REASON_AUTH_FAIL
-        if (ap_ptr != NULL)
-            ap_ptr = ap_ptr->next;
+    } else{
+        if (ap_ptr != NULL){
+            if (ap_ptr->next != NULL){
+                ap_ptr = ap_ptr->next;
+            }else{
+                ap_ptr = NULL;
+            }
+        }else{
+            ap_ptr = NULL;
+        }
     }
-    if (! scanning)
-        schedule_connect();
 }
 
 //void ESP8266MQTTMesh::onDHCPTimeout() {
@@ -1156,9 +1175,14 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
     dbgPrintln(EMMDBG_WIFI_EXTRA, "Got data from " + c->remoteIP().toString());
     for (int idx = meshConnect ? 0 : 1; idx <= ESP8266_NUM_CLIENTS; idx++) {
         if (espClient[idx] == c) {
+            if(&bufptr[idx] + len > &inbuffer[idx] + MQTT_MAX_PACKET_SIZE){
+                dbgPrintln(EMMDBG_WIFI, "Bufferoverflow by handling fragmented Packages!!!! FragmentBuffer Adress: " + String(&bufptr[idx]) + ", Buffer Start: " + String(&inbuffer[idx]) + ", Package Length: " + String(len) + ", Max Package Length: " + String(MQTT_MAX_PACKET_SIZE));
+                bufptr[idx] = inbuffer[idx];
+                return;
+            }
             char *dptr = (char *)data;
             for (size_t i = 0; i < len; i++) {
-                *bufptr[idx]++ = dptr[i];
+                *bufptr[idx]++ = dptr[i]; //handles fragmented Packages even if a nother client sends Stuff in between
                 if(! dptr[i]) {
                     handle_client_data(idx, inbuffer[idx]);
                     bufptr[idx] = inbuffer[idx];

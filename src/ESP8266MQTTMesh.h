@@ -2,7 +2,7 @@
 #define _ESP8266MQTTMESH_H_
 
 #if ! defined(MQTT_MAX_PACKET_SIZE)
-    #define MQTT_MAX_PACKET_SIZE (1024+128+1)
+    #define MQTT_MAX_PACKET_SIZE (1024+128+1) //1024 is the Payload size, 1 is the String Terminator and 128 should be the max topic Length
 #endif
 #if  ! defined(ESP8266MESHMQTT_DISABLE_OTA) && ! defined(ESP32)
     //By default we support OTA
@@ -57,7 +57,7 @@
 #define EMMDBG_NONE          0x00000000
 
 #ifndef ESP8266_NUM_CLIENTS
-  #define ESP8266_NUM_CLIENTS 4
+  #define ESP8266_NUM_CLIENTS 4 //4 seems to be them maximal Ammount the esp8266 can handle
 #endif
 
 enum MSG_TYPE {
@@ -71,19 +71,22 @@ enum MSG_TYPE {
     MSG_TYPE_RETAIN_QOS_2 = 15,
 };
 
+#if ASYNC_TCP_SSL_ENABLED
+    typedef struct {
+        const uint8_t *cert;
+        const uint8_t *key;
+        const uint8_t *fingerprint;
+        uint32_t cert_len;
+        uint32_t key_len;
+    } ssl_cert_t;
+#endif
 
-typedef struct {
-    const uint8_t *cert;
-    const uint8_t *key;
-    const uint8_t *fingerprint;
-    uint32_t cert_len;
-    uint32_t key_len;
-} ssl_cert_t;
-
-typedef struct {
-    uint32_t len;
-    byte md5[16];
-} ota_info_t;
+#if HAS_OTA
+    typedef struct {
+        uint32_t len;
+        byte md5[16];
+    } ota_info_t;
+#endif
 
 typedef struct ap_t {
     struct ap_t *next;
@@ -98,14 +101,11 @@ typedef struct {
     const char *bssid;
     bool hidden;
 } wifi_conn;
-#define WIFI_CONN(ssid, password, bssid, hidden) \
-    { ssid, password, bssid, hidden }
 
 class ESP8266MQTTMesh {
 public:
     class Builder;
 private:
-    uint32_t type_node;
     const unsigned int firmware_id;
     const char   *firmware_ver;
     const wifi_conn *networks;
@@ -134,15 +134,17 @@ private:
     const uint8_t *mqtt_fingerprint;
 #endif
     AsyncServer     espServer;
-    AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1] = {0};
+    AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1] = {0}; //----------TODO: test if this does what I hope it does!
     uint8_t         espMAC[ESP8266_NUM_CLIENTS+1][6];
     AsyncMqttClient mqttClient;
 
     Ticker schedule;
 
+    bool connectScheduled = false;
+    bool alreaddyDisconnected = false;
     int retry_connect;
     ap_t *ap = NULL;
-    ap_t *ap_ptr;
+    ap_t *ap_ptr = NULL;
     ap_t *ap_unused = NULL;
     char myID[10];
     char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE];
