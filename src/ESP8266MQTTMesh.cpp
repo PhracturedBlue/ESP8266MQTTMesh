@@ -361,7 +361,7 @@ void ESP8266MQTTMesh::scan() {
         int network_idx = NETWORK_MESH_NODE;
         int rssi = WiFi.RSSI(i);
         dbgPrintln(EMMDBG_WIFI, "Found SSID: '" + WiFi.SSID(i) + "' BSSID '" + WiFi.BSSIDstr(i) + "'" + " RSSI: " + String(rssi));
-        if (IS_GATEWAY) {
+        if (IS_GATEWAY) { //Always true except if configured that only a specific Node is allowed to connect to the real Acess Point
             network_idx = match_networks(WiFi.SSID(i).c_str(), WiFi.BSSIDstr(i).c_str());
         }
         if(network_idx == NETWORK_MESH_NODE) {
@@ -374,7 +374,7 @@ void ESP8266MQTTMesh::scan() {
                     continue;
                 }
             }
-        }
+        }//else Connection is a direct Access Point which matched the Access Point Credential List
         ap_t *next_ap;
         if (ap_unused == NULL) {
             next_ap = new ap_t;
@@ -1034,9 +1034,17 @@ void ESP8266MQTTMesh::onMqttUnsubscribe(uint16_t packetId) {
 }
 
 void ESP8266MQTTMesh::onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
+  if(index + len + 1 > MQTT_MAX_PACKET_SIZE){
+    dbgPrintln(EMMDBG_MQTT_EXTRA, "Message arrived, but was to long, InputBuffer: " + String(MQTT_MAX_PACKET_SIZE) + ", total MSG Length: " + String(total) + ", handled Part Length: " + String(index + len));
+    return;
+  }
+  if(index + len > total){
+    dbgPrintln(EMMDBG_MQTT_EXTRA, "Message arrived but partial Lengths was bigger then total Length (" + index + len + ">" + total + ")");
+    return;
+  }
   memcpy(&inbuffer[0][index], payload, len);
   inbuffer[0][total] = 0;
-  if (index + len >= total) {
+  if (index + len == total) {
     dbgPrintln(EMMDBG_MQTT_EXTRA, "Message arrived [" + String(topic) + "] '" + String(inbuffer[0]) + "'");
     broadcast_message(topic, inbuffer[0]);
     parse_message(topic, inbuffer[0]);
