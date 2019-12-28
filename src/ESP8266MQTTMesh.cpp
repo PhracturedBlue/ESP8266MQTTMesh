@@ -154,8 +154,6 @@ void ESP8266MQTTMesh::begin() {
     //sprintf(macstr,"%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     //dbgPrintln(EMMDBG_MSG, "Changing MAC address to: " + String(macstr));
     WiFi.disconnect();
-    delete espClient[0];
-    espClient[0] = NULL;
 
     // This is needed to ensure both wifi_set_macaddr() calls work
     WiFi.mode(WIFI_AP_STA);
@@ -175,20 +173,14 @@ void ESP8266MQTTMesh::begin() {
     WiFi.mode(WIFI_STA);
 
     this->connectWiFiEvents();
-    dbgPrintln(EMMDBG_MSG, "1");//---------
 
     espClient[0]->setNoDelay(true);
-    dbgPrintln(EMMDBG_MSG, "2");//---------
     espClient[0]->onConnect(   [this](void * arg, AsyncClient *c)                           { this->onConnect(c);         }, this);
-    dbgPrintln(EMMDBG_MSG, "3");//---------
     espClient[0]->onDisconnect([this](void * arg, AsyncClient *c)                           { this->onDisconnect(c);      }, this);
-    dbgPrintln(EMMDBG_MSG, "4");//---------
     espClient[0]->onError(     [this](void * arg, AsyncClient *c, int8_t error)             { this->onError(c, error);    }, this);
-    dbgPrintln(EMMDBG_MSG, "5");//---------
     espClient[0]->onAck(       [this](void * arg, AsyncClient *c, size_t len, uint32_t time){ this->onAck(c, len, time);  }, this);
     espClient[0]->onTimeout(   [this](void * arg, AsyncClient *c, uint32_t time)            { this->onTimeout(c, time);   }, this);
     espClient[0]->onData(      [this](void * arg, AsyncClient *c, void* data, size_t len)   { this->onData(c, data, len); }, this);
-    dbgPrintln(EMMDBG_MSG, "6");//---------
 
     espServer.onClient(     [this](void * arg, AsyncClient *c){ this->onClient(c);  }, this);
     espServer.setNoDelay(true);
@@ -340,8 +332,6 @@ void ESP8266MQTTMesh::scan() {
     if (! scanning) {
         ap_ptr = NULL;
         WiFi.disconnect();
-        delete espClient[0];
-        espClient[0] = NULL;
         WiFi.mode(WIFI_STA);
         dbgPrintln(EMMDBG_WIFI, "Scanning for networks");
         WiFi.scanDelete();
@@ -973,8 +963,6 @@ void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& e
     }
     alreaddyDisconnected = true;
     WiFi.disconnect();
-    delete espClient[0];
-    espClient[0] = NULL;
     if (event.reason == WIFI_DISCONNECT_REASON_ASSOC_TOOMANY  && retry_connect) {
         // If we rebooted without a clean shutdown, we may still be associated with this AP, in which case
         // we'll be booted and should try again
@@ -1033,8 +1021,6 @@ void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
         dbgPrintln(EMMDBG_MQTT, "Bad MQTT server fingerprint.");
         if (WiFi.isConnected()) {
             WiFi.disconnect();
-            delete espClient[0];
-            espClient[0] = NULL;
         }
         return;
     }
@@ -1155,8 +1141,6 @@ void ESP8266MQTTMesh::onDisconnect(AsyncClient* c) {
         dbgPrintln(EMMDBG_WIFI, "Disconnected from mesh");
         shutdown_AP();
         WiFi.disconnect();
-        delete espClient[0];
-        espClient[0] = NULL;
         return;
     }
     for (int i = 1; i <= ESP8266_NUM_CLIENTS; i++) {
