@@ -178,7 +178,7 @@ void ESP8266MQTTMesh::begin() {
     this->connectWiFiEvents();
     dbgPrintln(EMMDBG_MSG, "2");//---------
 
-    espClient[0]->setNoDelay(true);
+    //espClient[0]->setNoDelay(true);-----------
     espClient[0]->onConnect(   [this](void * arg, AsyncClient *c)                           { this->onConnect(c);         }, this);
     espClient[0]->onDisconnect([this](void * arg, AsyncClient *c)                           { this->onDisconnect(c);      }, this);
     espClient[0]->onError(     [this](void * arg, AsyncClient *c, int8_t error)             { this->onError(c, error);    }, this);
