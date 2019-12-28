@@ -101,6 +101,8 @@ typedef struct {
     const char *bssid;
     bool hidden;
 } wifi_conn;
+#define WIFI_CONN(ssid, password, bssid, hidden) \
+    { ssid, password, bssid, hidden }
 
 class ESP8266MQTTMesh {
 public:
