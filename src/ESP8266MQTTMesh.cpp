@@ -154,6 +154,8 @@ void ESP8266MQTTMesh::begin() {
     //sprintf(macstr,"%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     //dbgPrintln(EMMDBG_MSG, "Changing MAC address to: " + String(macstr));
     WiFi.disconnect();
+    delete espClient[0];
+    espClient[0] = NULL;
 
     // This is needed to ensure both wifi_set_macaddr() calls work
     WiFi.mode(WIFI_AP_STA);
@@ -332,6 +334,8 @@ void ESP8266MQTTMesh::scan() {
     if (! scanning) {
         ap_ptr = NULL;
         WiFi.disconnect();
+        delete espClient[0];
+        espClient[0] = NULL;
         WiFi.mode(WIFI_STA);
         dbgPrintln(EMMDBG_WIFI, "Scanning for networks");
         WiFi.scanDelete();
@@ -963,6 +967,8 @@ void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& e
     }
     alreaddyDisconnected = true;
     WiFi.disconnect();
+    delete espClient[0];
+    espClient[0] = NULL;
     if (event.reason == WIFI_DISCONNECT_REASON_ASSOC_TOOMANY  && retry_connect) {
         // If we rebooted without a clean shutdown, we may still be associated with this AP, in which case
         // we'll be booted and should try again
@@ -1021,6 +1027,8 @@ void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
         dbgPrintln(EMMDBG_MQTT, "Bad MQTT server fingerprint.");
         if (WiFi.isConnected()) {
             WiFi.disconnect();
+            delete espClient[0];
+            espClient[0] = NULL;
         }
         return;
     }
@@ -1087,7 +1095,7 @@ int ESP8266MQTTMesh::onSslFileRequest(const char *filename, uint8_t **buf) {
     }
 }
 #endif
-void ESP8266MQTTMesh::onClient(AsyncClient* c) {
+void ESP8266MQTTMesh::onClient(AsyncClient* c) { //when other Node connects to this AP and so into the Sensor Mesh
     dbgPrintln(EMMDBG_WIFI, "Got client connection from: " + c->remoteIP().toString());
     for (int i = 1; i <= ESP8266_NUM_CLIENTS; i++) {
         if (! espClient[i]) {
@@ -1101,11 +1109,11 @@ void ESP8266MQTTMesh::onClient(AsyncClient* c) {
             return;
         }
     }
-    dbgPrintln(EMMDBG_WIFI, "Discarding client connection from: " + c->remoteIP().toString());
+    dbgPrintln(EMMDBG_WIFI, "Discarding client connection from: " + c->remoteIP().toString() + " because max Connections are alreaddy established!");
     delete c;
 }
 
-void ESP8266MQTTMesh::onConnect(AsyncClient* c) {
+void ESP8266MQTTMesh::onConnect(AsyncClient* c) { //when this Node itself get a connection, not if a nother Node logs into this AP!
     dbgPrintln(EMMDBG_WIFI, "Connected to mesh");
 #if ASYNC_TCP_SSL_ENABLED
     if (mesh_secure.cert) {
@@ -1141,13 +1149,16 @@ void ESP8266MQTTMesh::onDisconnect(AsyncClient* c) {
         dbgPrintln(EMMDBG_WIFI, "Disconnected from mesh");
         shutdown_AP();
         WiFi.disconnect();
+        delete espClient[0];
+        espClient[0] = NULL;
         return;
     }
     for (int i = 1; i <= ESP8266_NUM_CLIENTS; i++) {
         if (c == espClient[i]) {
-            dbgPrintln(EMMDBG_WIFI, "Disconnected from AP");
+            dbgPrintln(EMMDBG_WIFI, "Disconnected Client from this AP");
             delete espClient[i];
             espClient[i] = NULL;
+            return;
         }
     }
     dbgPrintln(EMMDBG_WIFI, "Disconnected unknown client");
