@@ -454,7 +454,7 @@ int ESP8266MQTTMesh::match_networks(const char *ssid, const char *bssid)
 
 void ESP8266MQTTMesh::schedule_connect(float delay) {
     if(connectScheduled){
-        return
+        return;
     }
     connectScheduled = true;
     dbgPrintln(EMMDBG_WIFI_EXTRA, "Scheduling reconnect for " + String(delay,2)+ " seconds from now");
@@ -1179,8 +1179,8 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
     dbgPrintln(EMMDBG_WIFI_EXTRA, "Got data from " + c->remoteIP().toString());
     for (int idx = meshConnect ? 0 : 1; idx <= ESP8266_NUM_CLIENTS; idx++) {
         if (espClient[idx] == c) {
-            if(&bufptr[idx] + len > &inbuffer[idx] + MQTT_MAX_PACKET_SIZE){
-                dbgPrintln(EMMDBG_WIFI, "Bufferoverflow by handling fragmented Packages!!!! FragmentBuffer Adress: " + String(&bufptr[idx]) + ", Buffer Start: " + String(&inbuffer[idx]) + ", Package Length: " + String(len) + ", Max Package Length: " + String(MQTT_MAX_PACKET_SIZE));
+            if(bufptr[idx] + len > inbuffer[idx] + MQTT_MAX_PACKET_SIZE){
+                dbgPrintln(EMMDBG_WIFI, "Bufferoverflow by handling fragmented Packages!!!! FragmentBuffer Adress: " + String(bufptr[idx]) + ", Buffer Start: " + String(inbuffer[idx]) + ", Package Length: " + String(len) + ", Max Package Length: " + String(MQTT_MAX_PACKET_SIZE));
                 bufptr[idx] = inbuffer[idx];
                 return;
             }
