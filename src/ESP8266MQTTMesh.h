@@ -134,7 +134,7 @@ private:
     const uint8_t *mqtt_fingerprint;
 #endif
     AsyncServer     espServer;
-    AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1] = {0}; //----------TODO: test if this does what I hope it does!
+    AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1] = {0}; //TODO: test if this does what I hope it does!
     uint8_t         espMAC[ESP8266_NUM_CLIENTS+1][6];
     AsyncMqttClient mqttClient;
 
@@ -147,19 +147,15 @@ private:
     ap_t *ap_ptr = NULL;
     ap_t *ap_unused = NULL;
     char myID[10];
-    char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE];
-    char *bufptr[ESP8266_NUM_CLIENTS+1];
-    long lastMsg = 0;
-    char msg[50];
-    int value = 0;
-    bool meshConnect = false;
-    bool wasConnected = false;
-    unsigned long lastReconnect = 0;
-    unsigned long lastStatus = 0;
-    bool connecting = 0;
-    bool scanning = 0;
-    bool AP_ready = false;
-    std::function<void(const char *topic, const char *msg)> callback;
+    char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE]; //Buffer for storing Fragmented Packages between Calls
+    char *bufptr[ESP8266_NUM_CLIENTS+1]; //Pointer to inbuffer for handling fragmented Packages
+
+    bool meshConnect = false; //If Node is connected over the Mesh or directly to the Router
+    bool wasConnected = false; //is true if Node was connected and lost connection, false if restarted and hasn't had a connection
+    bool scanning = 0; //if scanning is in progress
+    bool AP_ready = false; //if own Acess point is setup or shutdown
+
+    std::function<void(const char *topic, const char *msg)> callback; //TODO: check out this syntax
 
     bool wifiConnected() { return (WiFi.status() == WL_CONNECTED); }
     void die() { ESP.restart(); while(1) {} }

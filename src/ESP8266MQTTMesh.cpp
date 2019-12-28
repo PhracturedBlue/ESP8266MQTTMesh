@@ -463,9 +463,7 @@ void ESP8266MQTTMesh::connect() {
         dbgPrintln(EMMDBG_WIFI, "Called connect when already connected!");
         return;
     }
-    connecting = false;
     retry_connect = 1;
-    lastReconnect = millis();
     if (scanning || ! ap_ptr) {
         scan();
     }
@@ -498,8 +496,6 @@ void ESP8266MQTTMesh::connect() {
     dbgPrintln(EMMDBG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + mac_str(ap_ptr->bssid) + "'");
     WiFi.begin(ssid, password);
     alreaddyDisconnected = false;
-    connecting = true;
-    lastStatus = lastReconnect;
 }
 
 String ESP8266MQTTMesh::mac_str(uint8_t *bssid) {
@@ -625,7 +621,6 @@ void ESP8266MQTTMesh::setup_AP() {
     build_mesh_ssid(_mesh_ssid, WiFi.softAPmacAddress(mac));
     WiFi.softAP(_mesh_ssid, mesh_password, WiFi.channel(), 1);
     dbgPrintln(EMMDBG_WIFI, "Initialized AP as '" + String(_mesh_ssid) + "'  IP '" + apIP.toString() + "'");
-    connecting = false; //Connection complete
     AP_ready = true;
 }
 
@@ -968,9 +963,7 @@ void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& e
     }
     alreaddyDisconnected = true;
     WiFi.disconnect();
-    if (! connecting) {
-        ap_ptr = NULL;
-    } else if (event.reason == WIFI_DISCONNECT_REASON_ASSOC_TOOMANY  && retry_connect) {
+    if (event.reason == WIFI_DISCONNECT_REASON_ASSOC_TOOMANY  && retry_connect) {
         // If we rebooted without a clean shutdown, we may still be associated with this AP, in which case
         // we'll be booted and should try again
         retry_connect--;
@@ -1062,7 +1055,7 @@ void ESP8266MQTTMesh::onMqttMessage(char* topic, char* payload, AsyncMqttClientM
     return;
   }
   memcpy(&inbuffer[0][index], payload, len);
-  inbuffer[0][total] = 0;
+  inbuffer[0][total] = '\0';
   if (index + len == total) {
     dbgPrintln(EMMDBG_MQTT_EXTRA, "Message arrived [" + String(topic) + "] '" + String(inbuffer[0]) + "'");
     broadcast_message(topic, inbuffer[0]);
@@ -1183,7 +1176,7 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
             char *dptr = (char *)data;
             for (size_t i = 0; i < len; i++) {
                 *bufptr[idx]++ = dptr[i]; //handles fragmented Packages even if a nother client sends Stuff in between
-                if(! dptr[i]) {
+                if(! dptr[i]) { //dptr[i]=='\n' steht immer am Ende eines vollständigen Paketes!
                     handle_client_data(idx, inbuffer[idx]);
                     bufptr[idx] = inbuffer[idx];
                 }
