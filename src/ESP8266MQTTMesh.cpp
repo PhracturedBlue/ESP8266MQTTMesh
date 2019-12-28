@@ -173,25 +173,25 @@ void ESP8266MQTTMesh::begin() {
     // WIFI_AP_STA from openning a TCP connection to it's gateway if the gateway is also
     // in WIFI_AP_STA
     WiFi.mode(WIFI_STA);
-    dbgPrintln(EMMDBG_MSG, "1");//---------
 
     this->connectWiFiEvents();
-    dbgPrintln(EMMDBG_MSG, "2");//---------
+    dbgPrintln(EMMDBG_MSG, "1");//---------
 
-    //espClient[0]->setNoDelay(true);-----------
+    espClient[0]->setNoDelay(true);
+    dbgPrintln(EMMDBG_MSG, "2");//---------
     espClient[0]->onConnect(   [this](void * arg, AsyncClient *c)                           { this->onConnect(c);         }, this);
-    espClient[0]->onDisconnect([this](void * arg, AsyncClient *c)                           { this->onDisconnect(c);      }, this);
-    espClient[0]->onError(     [this](void * arg, AsyncClient *c, int8_t error)             { this->onError(c, error);    }, this);
     dbgPrintln(EMMDBG_MSG, "3");//---------
+    espClient[0]->onDisconnect([this](void * arg, AsyncClient *c)                           { this->onDisconnect(c);      }, this);
+    dbgPrintln(EMMDBG_MSG, "4");//---------
+    espClient[0]->onError(     [this](void * arg, AsyncClient *c, int8_t error)             { this->onError(c, error);    }, this);
+    dbgPrintln(EMMDBG_MSG, "5");//---------
     espClient[0]->onAck(       [this](void * arg, AsyncClient *c, size_t len, uint32_t time){ this->onAck(c, len, time);  }, this);
     espClient[0]->onTimeout(   [this](void * arg, AsyncClient *c, uint32_t time)            { this->onTimeout(c, time);   }, this);
     espClient[0]->onData(      [this](void * arg, AsyncClient *c, void* data, size_t len)   { this->onData(c, data, len); }, this);
-    dbgPrintln(EMMDBG_MSG, "4");//---------
+    dbgPrintln(EMMDBG_MSG, "6");//---------
 
     espServer.onClient(     [this](void * arg, AsyncClient *c){ this->onClient(c);  }, this);
-    dbgPrintln(EMMDBG_MSG, "5");//---------
     espServer.setNoDelay(true);
-    dbgPrintln(EMMDBG_MSG, "6");//---------
 #if ASYNC_TCP_SSL_ENABLED
     espServer.onSslFileRequest([this](void * arg, const char *filename, uint8_t **buf) -> int { return this->onSslFileRequest(filename, buf); }, this);
     if (mesh_secure.cert) {
@@ -200,7 +200,6 @@ void ESP8266MQTTMesh::begin() {
     } else
 #endif
     espServer.begin();
-    dbgPrintln(EMMDBG_MSG, "7");//---------
 
     mqttClient.onConnect(    [this] (bool sessionPresent)                    { this->onMqttConnect(sessionPresent); });
     mqttClient.onDisconnect( [this] (AsyncMqttClientDisconnectReason reason) { this->onMqttDisconnect(reason); });
@@ -209,13 +208,10 @@ void ESP8266MQTTMesh::begin() {
     mqttClient.onMessage(    [this] (char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
                                                                              { this->onMqttMessage(topic, payload, properties, len, index, total); });
     mqttClient.onPublish(    [this] (uint16_t packetId)                      { this->onMqttPublish(packetId); });
-    dbgPrintln(EMMDBG_MSG, "8");//---------
 
     mqttClient.setServer(mqtt_server, mqtt_port);
-    dbgPrintln(EMMDBG_MSG, "9");//---------
     if (mqtt_username || mqtt_password)
         mqttClient.setCredentials(mqtt_username, mqtt_password);
-    dbgPrintln(EMMDBG_MSG, "10");//---------
 
 #if ASYNC_TCP_SSL_ENABLED
     mqttClient.setSecure(mqtt_secure);
