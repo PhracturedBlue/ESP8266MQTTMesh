@@ -394,7 +394,7 @@ void ESP8266MQTTMesh::scan() {
             if(network_idx != NETWORK_MESH_NODE) {
                 //Tested Signal is Wifi AP
                 if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE && //Current Signal is Mesh Node
-                     (rssi >= -80 || rssi >= ap_ptr->rssi))|| //and Signal under Test to direct AP have to be quite decent or at least better then current one
+                     (rssi >= -77 || rssi >= ap_ptr->rssi))|| //and Signal under Test to direct AP have to be quite decent or at least better then current one
                      (ap_ptr->ssid_idx != NETWORK_MESH_NODE && rssi >= ap_ptr->rssi))//or both are Ap Points, but tested one have stronger Signal
                 {
                     break;
@@ -402,7 +402,7 @@ void ESP8266MQTTMesh::scan() {
             } else {
                 //Tested Signal is mesh node
                 if ((ap_ptr->ssid_idx == NETWORK_MESH_NODE || //if Actual Node is Mesh Node
-                    (ap_ptr->ssid_idx != NETWORK_MESH_NODE && ap_ptr->rssi <= -80)) && //or is AP, but with weak Signal
+                    (ap_ptr->ssid_idx != NETWORK_MESH_NODE && ap_ptr->rssi <= -77)) && //or is AP, but with weak Signal
                       rssi >= ap_ptr->rssi) //and in either Way have better Connection then actuall one
                 {
                     break;
@@ -1161,8 +1161,15 @@ void ESP8266MQTTMesh::onAck(AsyncClient* c, size_t len, uint32_t time) {
 }
 
 void ESP8266MQTTMesh::onTimeout(AsyncClient* c, uint32_t time) {
-    dbgPrintln(EMMDBG_WIFI, "Got timeout  " + c->remoteIP().toString() + ": " + String(time));
-    c->close();
+    if(espClient[0] == c){ //Main Connection got Timeout
+        dbgPrintln(EMMDBG_WIFI, "main Connection timed Out : " + String(time));
+        shutdown_AP();
+        WiFi.disconnect();
+        return;
+    }else{ //connected Client timed out
+        dbgPrintln(EMMDBG_WIFI, "Got timeout  " + c->remoteIP().toString() + ": " + String(time));
+        c->close();
+    }
 }
 
 void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
