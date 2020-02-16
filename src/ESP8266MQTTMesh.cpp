@@ -118,7 +118,7 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
 }
 
 void ESP8266MQTTMesh::begin() {
-    Serial.println("angekommen1!!!!!")
+    Serial.println("angekommen1!!!!!");
     dbgPrintln(EMMDBG_NONE, "angekommen2!!!!!");
     dbgPrintln(EMMDBG_MSG, "angekommen 3!!!!!");
     int len = strlen(inTopic);
