@@ -114,6 +114,7 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
 }
 
 void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
+    dbgPrintln(EMMDBG_ALL_EXTRA, "angekommen in setCallback!!!!!");
     callback = _callback;
 }
 
