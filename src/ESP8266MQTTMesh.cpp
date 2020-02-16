@@ -641,7 +641,7 @@ void ESP8266MQTTMesh::send_connected_msg() {
     publish("info/connectedTo", String(mac_str(ap_ptr->bssid)).c_str(), MSG_TYPE_RETAIN_QOS_0);
 }
 
-/*
+
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
     std::string completeMessage = "";
     if (msgType == 0) {
@@ -660,8 +660,9 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
     dbgPrintln(EMMDBG_WIFI_EXTRA, completeMessage.c_str());
     return true;
 }
- */
 
+
+/*
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
     char msgTypeStr[2];
     if (msgType == 0) {
@@ -681,6 +682,7 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
     espClient[index]->write("\0", 1);
     return true;
 }
+*/
 
 
 void ESP8266MQTTMesh::broadcast_message(const char *topicOrMsg, const char *msg) {
