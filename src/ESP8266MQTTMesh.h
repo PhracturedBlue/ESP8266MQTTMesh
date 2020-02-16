@@ -171,7 +171,7 @@ private:
     int match_networks(const char *ssid, const char *bssid);
     void scan();
     void connect();
-    static void connect(ESP8266MQTTMesh *e) { e->connect(); };
+    //static void connect(ESP8266MQTTMesh *e) { e->connect(); };
     String mac_str(uint8_t *bssid);
     const char *build_mesh_ssid(char buf[32], uint8_t *mac);
     void schedule_connect(float delay = 5.0);
