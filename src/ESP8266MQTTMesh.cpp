@@ -462,7 +462,7 @@ void ESP8266MQTTMesh::schedule_connect(float delay) {
     }
     connectScheduled = true;
     dbgPrintln(EMMDBG_WIFI_EXTRA, "Scheduling reconnect for " + String(delay,2)+ " seconds from now");
-    schedule.once(delay, connect, this);
+    schedule.once(delay, connect_static, this);
 }
 
 void ESP8266MQTTMesh::connect() {
