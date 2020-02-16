@@ -467,6 +467,7 @@ void ESP8266MQTTMesh::schedule_connect(float delay) {
 
 void ESP8266MQTTMesh::connect() {
     Serial.println("bgiiprgbip");//------------
+    dbgPrintln(EMMDBG_NONE, "tmp0.25"); //----------
     dbgPrintln(EMMDBG_WIFI, "tmp0.5"); //-----------------
     connectScheduled = false;
     dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
