@@ -53,7 +53,8 @@ enum {
 
 #define dbgPrintln(lvl, msg)               \
     if (((lvl) & (EMMDBG_LEVEL)) == (lvl)) \
-    Serial.println(String("[") + __FUNCTION__ + String("] ") + msg); // String(__FUNCTION__)
+    Serial.println(msg);
+    //Serial.println(String("[") + __FUNCTION__ + String("] ") + msg);
 
 size_t mesh_strlcat(char* dst, const char* src, size_t len)
 {
