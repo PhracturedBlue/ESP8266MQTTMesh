@@ -118,30 +118,25 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
 }
 
 void ESP8266MQTTMesh::begin() {
-    dbgPrintln(EMMDBG_MSG, "1");
+    dbgPrintln(EMMDBG_ALL_EXTRA, "angekommen!!!!!");
     int len = strlen(inTopic);
-    dbgPrintln(EMMDBG_MSG, "2");
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max inTopicLen == 16");
         die();
     }
-    dbgPrintln(EMMDBG_MSG, "3");
     if (inTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "inTopic must end with '/'");
         die();
     }
-    dbgPrintln(EMMDBG_MSG, "4");
     len = strlen(outTopic);
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max outTopicLen == 16");
         die();
     }
-    dbgPrintln(EMMDBG_MSG, "5");
     if (outTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
         die();
     }
-    dbgPrintln(EMMDBG_MSG, "6");
     //dbgPrintln(EMMDBG_MSG, "Server: " + mqtt_server);
     //dbgPrintln(EMMDBG_MSG, "Port: " + String(mqtt_port));
     //dbgPrintln(EMMDBG_MSG, "User: " + mqtt_username ? mqtt_username : "None");
