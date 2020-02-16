@@ -51,14 +51,9 @@ enum {
   #define EMMDBG_LEVEL EMMDBG_ALL_EXTRA
 #endif
 
-/*
 #define dbgPrintln(lvl, msg)               \
     if (((lvl) & (EMMDBG_LEVEL)) == (lvl)) \
     Serial.println("[" + String(__FUNCTION__) + "] " + msg)
-    */
-
-#define dbgPrintln(lvl, msg)               \
-    Serial.println(msg)
 
 size_t mesh_strlcat(char* dst, const char* src, size_t len)
 {
@@ -1098,7 +1093,7 @@ void ESP8266MQTTMesh::onMqttMessage(char* topic, char* payload, AsyncMqttClientM
     return;
   }
   if(index + len > total){
-    dbgPrintln(EMMDBG_MQTT_EXTRA, "Message arrived but partial Lengths was bigger then total Length (" + String(index) + String(len) + ">" + String(total) + ")"); //
+    dbgPrintln(EMMDBG_MQTT_EXTRA, "Message arrived but partial Lengths was bigger then total Length (" + String(index) + String(len) + ">" + String(total) + ")");
     return;
   }
   memcpy(&inbuffer[0][index], payload, len);
