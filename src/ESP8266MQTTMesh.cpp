@@ -118,24 +118,30 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
 }
 
 void ESP8266MQTTMesh::begin() {
+    dbgPrintln(EMMDBG_MSG, "1");
     int len = strlen(inTopic);
+    dbgPrintln(EMMDBG_MSG, "2");
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max inTopicLen == 16");
         die();
     }
+    dbgPrintln(EMMDBG_MSG, "3");
     if (inTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "inTopic must end with '/'");
         die();
     }
+    dbgPrintln(EMMDBG_MSG, "4");
     len = strlen(outTopic);
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max outTopicLen == 16");
         die();
     }
+    dbgPrintln(EMMDBG_MSG, "5");
     if (outTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
         die();
     }
+    dbgPrintln(EMMDBG_MSG, "6");
     //dbgPrintln(EMMDBG_MSG, "Server: " + mqtt_server);
     //dbgPrintln(EMMDBG_MSG, "Port: " + String(mqtt_port));
     //dbgPrintln(EMMDBG_MSG, "User: " + mqtt_username ? mqtt_username : "None");
@@ -159,7 +165,7 @@ void ESP8266MQTTMesh::begin() {
     WiFi.mode(WIFI_AP_STA);
     bool ok_ap = wifi_set_macaddr(SOFTAP_IF, const_cast<uint8_t *>(mac));
     mac[0] |= 0x04;
-    bool ok_sta = wifi_set_macaddr(STATION_IF, const_cast<uint8_t *>(mac)); 
+    bool ok_sta = wifi_set_macaddr(STATION_IF, const_cast<uint8_t *>(mac));
     if (! ok_ap || ! ok_sta) {
         dbgPrintln(EMMDBG_MSG, "Failed to set MAC address");
         die();
