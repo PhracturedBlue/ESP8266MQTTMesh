@@ -578,7 +578,7 @@ void ESP8266MQTTMesh::HandleMessages(const char *topic, const char *msg) {
 }
 
 void ESP8266MQTTMesh::connect_mqtt() {
-    dbgPrintln(EMMDBG_MQTT, "Attempting MQTT connection (" + mqtt_server + ":" + String(mqtt_port) + ")...");
+    dbgPrintln(EMMDBG_MQTT, "Attempting MQTT connection (" + String(mqtt_server) + ":" + String(mqtt_port) + ")...");
     // Attempt to connect
     mqttClient.connect();
 }
