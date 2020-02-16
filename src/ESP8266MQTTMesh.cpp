@@ -642,7 +642,7 @@ void ESP8266MQTTMesh::send_connected_msg() {
 }
 
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
-    std::string completeMessage = "";
+    std::string completeMessage("");
     if (msgType == 0) {
         msgType = MSG_TYPE_INVALID;
     }
