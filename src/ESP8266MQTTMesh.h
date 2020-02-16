@@ -30,6 +30,7 @@
 #include <AsyncMqttClient.h>
 #include <FS.h>
 #include <functional>
+#include <string>
 
 #ifdef ESP32
   #define _chipID ((unsigned long)ESP.getEfuseMac())

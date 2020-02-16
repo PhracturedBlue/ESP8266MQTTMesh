@@ -464,15 +464,14 @@ void ESP8266MQTTMesh::connect() {
         return;
     }
     retry_connect = 1;
-    if (scanning || ! ap_ptr) {
-        scan();
-    }
     if (scanning) {
+        scan();
         schedule_connect(0.5);
         return;
     }
     if (! ap_ptr) {
         // No networks found, try again
+        scan();
         schedule_connect(5.0);
         return;
     }
@@ -643,22 +642,21 @@ void ESP8266MQTTMesh::send_connected_msg() {
 }
 
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
-    char msgTypeStr[2];
+    string completeMessage = "";
     if (msgType == 0) {
         msgType = MSG_TYPE_INVALID;
     }
-    msgTypeStr[0] = msgType;
-    msgTypeStr[1] = 0;
     if (index == 0) {
         //We only send the msgType upstream
-        espClient[index]->write(msgTypeStr,1);
+        completeMessage += String(msgType);
     }
-    espClient[index]->write(topicOrMsg);
+    completeMessage += String(topicOrMsg);
     if (msg) {
-        espClient[index]->write("=", 1);
-        espClient[index]->write(msg);
+        completeMessage += String("=");
+        completeMessage += String(msg);
     }
-    espClient[index]->write("\0", 1);
+    espClient[index]->write(completeMessage.c_str());
+    dbgPrintln(EMMDBG_WIFI_EXTRA, completeMessage.c_str())
     return true;
 }
 
