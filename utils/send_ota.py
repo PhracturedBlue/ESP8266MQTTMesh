@@ -47,11 +47,11 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     #esp8266-out/mesh_esp8266-6/check=MD5 Passed
     match = []
-    if regex(r'/([0-9a-f]+)/ota/erase$', msg.topic, match):
+    if regex(r'/([0-9a-fA-F]+)/ota/erase$', msg.topic, match):
         q.put(["erase", match[0]])
-    elif regex(r'([0-9a-f]+)/ota/md5/([0-9a-f]+)', msg.topic, match):
+    elif regex(r'([0-9a-fA-F]+)/ota/md5/([0-9a-fA-F]+)', msg.topic, match):
         q.put(["md5", match[0], match[1], msg.payload])
-    elif regex(r'([0-9a-f]+)/ota/check$', msg.topic, match):
+    elif regex(r'([0-9a-fA-F]+)/ota/check$', msg.topic, match):
         q.put(["check", match[0], msg.payload])
     else:
         #print("%s   %-30s = %s" % (str(datetime.datetime.now()), msg.topic, str(msg.payload)));
