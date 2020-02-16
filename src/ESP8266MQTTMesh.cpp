@@ -225,6 +225,7 @@ void ESP8266MQTTMesh::begin() {
     dbgPrintln(EMMDBG_WIFI_EXTRA, WiFi.status());
     dbgPrintln(EMMDBG_MSG_EXTRA, "Setup Complete");
     ap_ptr = NULL;
+    dbgPrintln(EMMDBG_MSG_EXTRA, "nberopbfribg"); //-------------
     connect();
 }
 
