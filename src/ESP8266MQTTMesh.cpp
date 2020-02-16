@@ -114,30 +114,34 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
 }
 
 void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
-    Serial.println("angekommen in setCallback!!!!!");
     callback = _callback;
 }
 
 void ESP8266MQTTMesh::begin() {
-    Serial.println("angekommen!!!!!");
+    dbgPrintln(EMMDBG_NONE, "angekommen!!!!!");
+    dbgPrintln(EMMDBG_MSG, "angekommen 2!!!!!");
     int len = strlen(inTopic);
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max inTopicLen == 16");
         die();
     }
+    dbgPrintln(EMMDBG_NONE, "1");
     if (inTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "inTopic must end with '/'");
         die();
     }
+    dbgPrintln(EMMDBG_NONE, "2");
     len = strlen(outTopic);
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max outTopicLen == 16");
         die();
     }
+    dbgPrintln(EMMDBG_NONE, "3");
     if (outTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
         die();
     }
+    dbgPrintln(EMMDBG_NONE, "4");
     //dbgPrintln(EMMDBG_MSG, "Server: " + mqtt_server);
     //dbgPrintln(EMMDBG_MSG, "Port: " + String(mqtt_port));
     //dbgPrintln(EMMDBG_MSG, "User: " + mqtt_username ? mqtt_username : "None");
