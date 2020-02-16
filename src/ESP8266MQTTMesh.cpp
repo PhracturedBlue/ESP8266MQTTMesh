@@ -648,12 +648,12 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
     }
     if (index == 0) {
         //We only send the msgType upstream
-        completeMessage += String(msgType);
+        completeMessage += String(msgType).c_str();
     }
-    completeMessage += String(topicOrMsg);
+    completeMessage += String(topicOrMsg).c_str();
     if (msg) {
-        completeMessage += String("=");
-        completeMessage += String(msg);
+        completeMessage += String("=").c_str();
+        completeMessage += String(msg).c_str();
     }
     espClient[index]->write(completeMessage.c_str());
     dbgPrintln(EMMDBG_WIFI_EXTRA, completeMessage.c_str());
