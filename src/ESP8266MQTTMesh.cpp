@@ -121,6 +121,7 @@ void ESP8266MQTTMesh::begin() {
     Serial.println("angekommen1!!!!!");
     dbgPrintln(EMMDBG_NONE, "angekommen2!!!!!");
     dbgPrintln(EMMDBG_MSG, "angekommen 3!!!!!");
+    Serial.println("angekommen4!!!!!");
     int len = strlen(inTopic);
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max inTopicLen == 16");
