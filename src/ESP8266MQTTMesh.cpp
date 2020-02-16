@@ -225,7 +225,6 @@ void ESP8266MQTTMesh::begin() {
     dbgPrintln(EMMDBG_WIFI_EXTRA, WiFi.status());
     dbgPrintln(EMMDBG_MSG_EXTRA, "Setup Complete");
     ap_ptr = NULL;
-    dbgPrintln(EMMDBG_MSG_EXTRA, "nberopbfribg"); //-------------
     connect();
 }
 
@@ -467,6 +466,7 @@ void ESP8266MQTTMesh::schedule_connect(float delay) {
 }
 
 void ESP8266MQTTMesh::connect() {
+    dbgPrintln(EMMDBG_WIFI, "tmp0.5"); //-----------------
     connectScheduled = false;
     dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     if (WiFi.isConnected()) {
