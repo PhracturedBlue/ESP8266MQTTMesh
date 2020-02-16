@@ -467,26 +467,31 @@ void ESP8266MQTTMesh::schedule_connect(float delay) {
 
 void ESP8266MQTTMesh::connect() {
     connectScheduled = false;
+    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     if (WiFi.isConnected()) {
         dbgPrintln(EMMDBG_WIFI, "Called connect when already connected!");
         return;
     }
+    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     retry_connect = 1;
     if (scanning) {
         scan();
         schedule_connect(0.5);
         return;
     }
+    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     if (! ap_ptr) {
         // No networks found, try again
         scan();
         schedule_connect(5.0);
         return;
     }
+    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     int i = 0;
     for (ap_t *p = ap; p != NULL; p = p->next, i++) {
         dbgPrintln(EMMDBG_WIFI, String(i) + String(p == ap_ptr ? " * " : "   ") + mac_str(p->bssid) + " " + String(p->rssi));
     }
+    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     char _mesh_ssid[32];
     const char *ssid;
     const char *password;
@@ -500,6 +505,7 @@ void ESP8266MQTTMesh::connect() {
         password = networks[ap_ptr->ssid_idx].password;
         meshConnect = false;
     }
+    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     dbgPrintln(EMMDBG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + mac_str(ap_ptr->bssid) + "'");
     WiFi.begin(ssid, password);
     alreaddyDisconnected = false;
