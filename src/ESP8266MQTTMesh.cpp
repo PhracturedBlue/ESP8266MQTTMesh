@@ -114,12 +114,12 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
 }
 
 void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const char *msg)> _callback) {
-    dbgPrintln(EMMDBG_ALL_EXTRA, "angekommen in setCallback!!!!!");
+    Serial.println("angekommen in setCallback!!!!!");
     callback = _callback;
 }
 
 void ESP8266MQTTMesh::begin() {
-    dbgPrintln(EMMDBG_ALL_EXTRA, "angekommen!!!!!");
+    Serial.println("angekommen!!!!!");
     int len = strlen(inTopic);
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max inTopicLen == 16");
