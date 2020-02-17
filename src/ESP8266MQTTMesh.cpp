@@ -648,9 +648,12 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
     if (msgType == 0) {
         msgType = MSG_TYPE_INVALID;
     }
+    char msgTypeStr[2];
+    msgTypeStr[0] = msgType;
+    msgTypeStr[1] = '\0';
     if (index == 0) {
         //We only send the msgType upstream
-        completeMessage += String(msgType).c_str();
+        completeMessage += String(msgTypeStr).c_str();
     }
     completeMessage += String(topicOrMsg).c_str();
     if (msg) {
