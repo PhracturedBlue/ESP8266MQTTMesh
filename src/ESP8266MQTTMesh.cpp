@@ -659,7 +659,7 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
     }
     char c_string[completeMessage.length() + 1];
     strcpy(c_string, completeMessage.c_str());
-    c_string[completeMessage.length()] = '\0';
+    c_string[completeMessage.length()] = '\n';
     espClient[index]->write(c_string);
     dbgPrintln(EMMDBG_WIFI_EXTRA, String("now sending raw Message: ") + c_string);
     return true;
@@ -683,7 +683,7 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
         espClient[index]->write("=", 1);
         espClient[index]->write(msg);
     }
-    espClient[index]->write("\0", 1);
+    espClient[index]->write("\n", 1);
     return true;
 }
 */
@@ -1211,7 +1211,7 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
             char *dptr = (char *)data;
             for (size_t i = 0; i < len; i++) {
                 *bufptr[idx]++ = dptr[i]; //handles fragmented Packages even if a nother client sends Stuff in between
-                if(! dptr[i]) { //dptr[i]=='\n' steht immer am Ende eines vollständigen Paketes!
+                if(dptr[i] == '\n') { //dptr[i]=='\n' steht immer am Ende eines vollständigen Paketes!
                     handle_client_data(idx, inbuffer[idx]);
                     bufptr[idx] = inbuffer[idx];
                 }
