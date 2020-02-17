@@ -657,7 +657,7 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
         completeMessage += String("=").c_str();
         completeMessage += String(msg).c_str();
     }
-    espClient[index]->write(completeMessage.c_str() + "\0");
+    espClient[index]->write(completeMessage.c_str());
     dbgPrintln(EMMDBG_WIFI_EXTRA, String("now sending raw Message: ") + completeMessage.c_str());
     return true;
 }
@@ -1197,7 +1197,7 @@ void ESP8266MQTTMesh::onTimeout(AsyncClient* c, uint32_t time) {
 }
 
 void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
-    dbgPrintln(EMMDBG_WIFI_EXTRA, "Got data from " + c->remoteIP().toString());
+    dbgPrintln(EMMDBG_WIFI_EXTRA, "Got data from " + c->remoteIP().toString() + ": " + String((char *)data));
     for (int idx = meshConnect ? 0 : 1; idx <= ESP8266_NUM_CLIENTS; idx++) {
         if (espClient[idx] == c) {
             if(bufptr[idx] + len > inbuffer[idx] + MQTT_MAX_PACKET_SIZE){
