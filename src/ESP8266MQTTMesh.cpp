@@ -1213,7 +1213,7 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) { //TODO: c
             for (size_t i = 0; i < len; i++) {
                 *bufptr[idx]++ = dptr[i]; //handles fragmented Packages even if a nother client sends Stuff in between
                 if(dptr[i] == '\n') { //dptr[i]=='\n' steht immer am Ende eines vollständigen Paketes!
-                    dptr[i] = '\0';
+                    *bufptr[idx]++ = '\0';
                     handle_client_data(idx, inbuffer[idx]);
                     bufptr[idx] = inbuffer[idx];
                 }
