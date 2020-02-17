@@ -657,9 +657,9 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
         completeMessage += String("=").c_str();
         completeMessage += String(msg).c_str();
     }
-    char c_string[completeMessage.length() + 1]
-    strcpy(c_string, completeMessage.c_str())
-    c_string[completeMessage.length()] = '\0'
+    char c_string[completeMessage.length() + 1];
+    strcpy(c_string, completeMessage.c_str());
+    c_string[completeMessage.length()] = '\0';
     espClient[index]->write(c_string);
     dbgPrintln(EMMDBG_WIFI_EXTRA, String("now sending raw Message: ") + c_string);
     return true;
