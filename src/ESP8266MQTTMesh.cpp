@@ -1200,12 +1200,12 @@ void ESP8266MQTTMesh::onTimeout(AsyncClient* c, uint32_t time) {
     }
 }
 
-void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
+void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) { //TODO: currently received Package has no String Terminator at the End, fix it!
     dbgPrintln(EMMDBG_WIFI_EXTRA, "Got data from " + c->remoteIP().toString() + ": " + String((char *)data));
     for (int idx = meshConnect ? 0 : 1; idx <= ESP8266_NUM_CLIENTS; idx++) {
         if (espClient[idx] == c) {
             if(bufptr[idx] + len > inbuffer[idx] + MQTT_MAX_PACKET_SIZE){
-                dbgPrintln(EMMDBG_WIFI, "Bufferoverflow by handling fragmented Packages!!!! FragmentBuffer Adress: " + String(bufptr[idx]) + ", Buffer Start: " + String(inbuffer[idx]) + ", Package Length: " + String(len) + ", Max Package Length: " + String(MQTT_MAX_PACKET_SIZE));
+                dbgPrintln(EMMDBG_WIFI, "Bufferoverflow by handling fragmented Packages!!!! FragmentBuffer Adress: " + String(*bufptr[idx]) + ", Buffer Start: " + String(*inbuffer[idx]) + ", Package Length: " + String(len) + ", Max Package Length: " + String(MQTT_MAX_PACKET_SIZE));
                 bufptr[idx] = inbuffer[idx];
                 return;
             }
@@ -1213,6 +1213,7 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) {
             for (size_t i = 0; i < len; i++) {
                 *bufptr[idx]++ = dptr[i]; //handles fragmented Packages even if a nother client sends Stuff in between
                 if(dptr[i] == '\n') { //dptr[i]=='\n' steht immer am Ende eines vollständigen Paketes!
+                    dptr[i] = '\0';
                     handle_client_data(idx, inbuffer[idx]);
                     bufptr[idx] = inbuffer[idx];
                 }
