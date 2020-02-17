@@ -53,7 +53,7 @@ enum {
 
 #define dbgPrintln(lvl, msg)               \
     if (((lvl) & (EMMDBG_LEVEL)) == (lvl)) \
-    Serial.println(msg);
+    Serial.println(String("[") + String("] ") + msg);
     //Serial.println(String("[") + __FUNCTION__ + String("] ") + msg);
 
 size_t mesh_strlcat(char* dst, const char* src, size_t len)
@@ -119,32 +119,24 @@ void ESP8266MQTTMesh::setCallback(std::function<void(const char *topic, const ch
 }
 
 void ESP8266MQTTMesh::begin() {
-    Serial.println("angekommen1!!!!!");
-    dbgPrintln(EMMDBG_NONE, "angekommen2!!!!!");
-    dbgPrintln(EMMDBG_MSG, "angekommen 3!!!!!");
-    Serial.println("angekommen4!!!!!");
     int len = strlen(inTopic);
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max inTopicLen == 16");
         die();
     }
-    dbgPrintln(EMMDBG_NONE, "1");
     if (inTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "inTopic must end with '/'");
         die();
     }
-    dbgPrintln(EMMDBG_NONE, "2");
     len = strlen(outTopic);
     if (len > 16) {
         dbgPrintln(EMMDBG_MSG, "Max outTopicLen == 16");
         die();
     }
-    dbgPrintln(EMMDBG_NONE, "3");
     if (outTopic[len-1] != '/') {
         dbgPrintln(EMMDBG_MSG, "outTopic must end with '/'");
         die();
     }
-    dbgPrintln(EMMDBG_NONE, "4");
     //dbgPrintln(EMMDBG_MSG, "Server: " + mqtt_server);
     //dbgPrintln(EMMDBG_MSG, "Port: " + String(mqtt_port));
     //dbgPrintln(EMMDBG_MSG, "User: " + mqtt_username ? mqtt_username : "None");
@@ -467,36 +459,27 @@ void ESP8266MQTTMesh::schedule_connect(float delay) {
 }
 
 void ESP8266MQTTMesh::connect() {
-    Serial.println(String("bgiiprgbip")); //------------
-
-    dbgPrintln(EMMDBG_NONE, "tmp0.25"); //----------
-    dbgPrintln(EMMDBG_WIFI, "tmp0.5"); //-----------------
     connectScheduled = false;
-    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     if (WiFi.isConnected()) {
         dbgPrintln(EMMDBG_WIFI, "Called connect when already connected!");
         return;
     }
-    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     retry_connect = 1;
     if (scanning) {
         scan();
         schedule_connect(0.5);
         return;
     }
-    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     if (! ap_ptr) {
         // No networks found, try again
         scan();
         schedule_connect(5.0);
         return;
     }
-    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     int i = 0;
     for (ap_t *p = ap; p != NULL; p = p->next, i++) {
         dbgPrintln(EMMDBG_WIFI, String(i) + String(p == ap_ptr ? " * " : "   ") + mac_str(p->bssid) + " " + String(p->rssi));
     }
-    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     char _mesh_ssid[32];
     const char *ssid;
     const char *password;
@@ -510,7 +493,6 @@ void ESP8266MQTTMesh::connect() {
         password = networks[ap_ptr->ssid_idx].password;
         meshConnect = false;
     }
-    dbgPrintln(EMMDBG_WIFI, "tmp1"); //-----------------
     dbgPrintln(EMMDBG_WIFI, "Connecting to SSID : '" + String(ssid) + "' BSSID '" + mac_str(ap_ptr->bssid) + "'");
     WiFi.begin(ssid, password);
     alreaddyDisconnected = false;
@@ -660,7 +642,7 @@ void ESP8266MQTTMesh::send_connected_msg() {
     publish("info/connectedTo", String(mac_str(ap_ptr->bssid)).c_str(), MSG_TYPE_RETAIN_QOS_0);
 }
 
-/*
+
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
     std::string completeMessage = "";
     if (msgType == 0) {
@@ -679,10 +661,9 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
     dbgPrintln(EMMDBG_WIFI_EXTRA, completeMessage.c_str());
     return true;
 }
- */
 
 
-//*
+/*
 bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char *msg, uint8_t msgType) {
     char msgTypeStr[2];
     if (msgType == 0) {
@@ -702,7 +683,7 @@ bool ESP8266MQTTMesh::send_message(int index, const char *topicOrMsg, const char
     espClient[index]->write("\0", 1);
     return true;
 }
-//*/
+*/
 
 
 void ESP8266MQTTMesh::broadcast_message(const char *topicOrMsg, const char *msg) {
