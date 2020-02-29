@@ -325,7 +325,7 @@ bool ESP8266MQTTMesh::verify_bssid(uint8_t *bssid) {
 }
 
 bool ESP8266MQTTMesh::connected() {
-    return wifiConnected() && ((meshConnect && espClient[0] && espClient[0]->connected()) || mqttClient.connected());
+    return wifiConnected() && ((meshConnect && espClient[0] && espClient[0]->connected() && p2pConnected) || mqttClient.connected());
 }
 
 void ESP8266MQTTMesh::scan() {
@@ -584,6 +584,7 @@ void ESP8266MQTTMesh::publish(const char *topicDirection, const char *baseTopic,
 }
 
 void ESP8266MQTTMesh::shutdown_AP() {
+    p2pConnected = false;
     if(! AP_ready)
         return;
     for (int i = 1; i <= ESP8266_NUM_CLIENTS; i++) {
@@ -1138,6 +1139,7 @@ void ESP8266MQTTMesh::onClient(AsyncClient* c) { //when other Node connects to t
 
 void ESP8266MQTTMesh::onConnect(AsyncClient* c) { //when this Node itself get a connection, not if a nother Node logs into this AP!
     dbgPrintln(EMMDBG_WIFI, "Connected to mesh");
+    p2pConnected = true;
 #if ASYNC_TCP_SSL_ENABLED
     if (mesh_secure.cert) {
         SSL* clientSsl = c->getSSL();
@@ -1192,7 +1194,7 @@ void ESP8266MQTTMesh::onAck(AsyncClient* c, size_t len, uint32_t time) {
 }
 
 void ESP8266MQTTMesh::onTimeout(AsyncClient* c, uint32_t time) {
-    if(espClient[0] == c){ //Main Connection got Timeout
+    if(espClient[0] == c){ //Main Mesh Connection got Timeout
         dbgPrintln(EMMDBG_WIFI, "main Connection timed Out : " + String(time));
         shutdown_AP();
         WiFi.disconnect();

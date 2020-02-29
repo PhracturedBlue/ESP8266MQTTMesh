@@ -155,6 +155,7 @@ private:
 
     bool meshConnect = false; //If Node is connected over the Mesh or directly to the Router
     bool wasConnected = false; //is true if Node was connected and lost connection, false if restarted and hasn't had a connection
+    bool p2pConnected = false; //when connected over Mesh, a peer to peer Connection gets established with the connected Node, variable shows if this Connection is ok.
     bool scanning = 0; //if scanning is in progress
     bool AP_ready = false; //if own Acess point is setup or shutdown
 
