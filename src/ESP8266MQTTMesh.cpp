@@ -325,6 +325,7 @@ bool ESP8266MQTTMesh::verify_bssid(uint8_t *bssid) {
 }
 
 bool ESP8266MQTTMesh::connected() {
+    delay(0); // let the Interrupts execute
     return wifiConnected() && ((meshConnect && espClient[0] && espClient[0]->connected() && p2pConnected) || mqttClient.connected());
 }
 
@@ -584,7 +585,6 @@ void ESP8266MQTTMesh::publish(const char *topicDirection, const char *baseTopic,
 }
 
 void ESP8266MQTTMesh::shutdown_AP() {
-    p2pConnected = false;
     if(! AP_ready)
         return;
     for (int i = 1; i <= ESP8266_NUM_CLIENTS; i++) {
@@ -937,6 +937,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         //publish("ota/flash", "Success");
 
         shutdown_AP();
+        p2pConnected = false;
         mqttClient.disconnect();
         delay(100);
         ESP.restart();
@@ -976,6 +977,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
 #endif //HAS_OTA
 
 void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
+    // when connecting to the Mesh, not the direct Connection
     if (meshConnect) {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mesh: " + WiFi.gatewayIP().toString() + " on port: " + String(mesh_port));
 #if ASYNC_TCP_SSL_ENABLED
@@ -983,12 +985,22 @@ void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
 #else
         espClient[0]->connect(WiFi.gatewayIP(), mesh_port);
 #endif
+        schedule.once(5000, checkConnectionEstablished, this);
         bufptr[0] = inbuffer[0];
     } else {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mqtt");
         connect_mqtt();
     }
 }
+
+static void checkConnectionEstablished(ESP8266MQTTMesh *e) {
+    if(!e->connected()){
+        dbgPrintln(EMMDBG_WIFI, "restarting because tried to accomplish p2p Connection, but Connection wasn't astablished.");
+        die();
+        while(true){}
+    }
+}
+
 
 void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
     //Reasons are here: ESP8266WiFiType.h-> WiFiDisconnectReason
@@ -1064,6 +1076,7 @@ void ESP8266MQTTMesh::onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
     }
 #endif
     shutdown_AP();
+    p2pConnected = false;
     if (WiFi.isConnected()) {
         connect_mqtt();
     }
@@ -1179,6 +1192,7 @@ void ESP8266MQTTMesh::onDisconnect(AsyncClient* c) {
     if (c == espClient[0]) {
         dbgPrintln(EMMDBG_WIFI, "Disconnected from mesh");
         shutdown_AP();
+        p2pConnected = false;
         WiFi.disconnect();
         return;
     }
@@ -1203,6 +1217,7 @@ void ESP8266MQTTMesh::onTimeout(AsyncClient* c, uint32_t time) {
     if(espClient[0] == c){ //Main Mesh Connection got Timeout
         dbgPrintln(EMMDBG_WIFI, "main Connection timed Out : " + String(time));
         shutdown_AP();
+        p2pConnected = false;
         WiFi.disconnect();
         return;
     }else{ //connected Client timed out

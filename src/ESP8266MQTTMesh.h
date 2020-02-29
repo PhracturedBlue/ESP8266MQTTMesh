@@ -196,10 +196,10 @@ private:
     char * md5(const uint8_t *msg, int len);
     bool check_ota_md5();
     void assign_subdomain();
+    static void checkConnectionEstablished(ESP8266MQTTMesh *e);
     static void assign_subdomain(ESP8266MQTTMesh *e) { e->assign_subdomain(); };
     void erase_sector();
     static void erase_sector(ESP8266MQTTMesh *e) { e->erase_sector(); };
-    static void reboot(ESP8266MQTTMesh* e) { ESP.restart(); };
 
     void connectWiFiEvents();
 
