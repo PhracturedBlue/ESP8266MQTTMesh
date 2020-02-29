@@ -197,6 +197,10 @@ private:
     bool check_ota_md5();
     void assign_subdomain();
     static void checkConnectionEstablished(ESP8266MQTTMesh *e);
+
+    void checkConnectionEstablished();
+    static void checkConnectionEstablished_static(ESP8266MQTTMesh *e) { e->checkConnectionEstablished(); };
+
     static void assign_subdomain(ESP8266MQTTMesh *e) { e->assign_subdomain(); };
     void erase_sector();
     static void erase_sector(ESP8266MQTTMesh *e) { e->erase_sector(); };

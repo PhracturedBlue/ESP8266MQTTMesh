@@ -985,7 +985,7 @@ void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
 #else
         espClient[0]->connect(WiFi.gatewayIP(), mesh_port);
 #endif
-        schedule.once(5000, checkConnectionEstablished, this);
+        schedule.once(5000, checkConnectionEstablished_static, this);
         bufptr[0] = inbuffer[0];
     } else {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mqtt");
@@ -993,8 +993,8 @@ void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
     }
 }
 
-static void checkConnectionEstablished(ESP8266MQTTMesh *e) {
-    if(!e->connected()){
+void ESP8266MQTTMesh::checkConnectionEstablished() {
+    if(!connected()){
         dbgPrintln(EMMDBG_WIFI, "restarting because tried to accomplish p2p Connection, but Connection wasn't astablished.");
         die();
         while(true){}
