@@ -1,6 +1,9 @@
 # ESP8266MQTTMesh
 Self-assembling mesh network built around the MQTT protocol for the ESP8266 with OTA support
 
+## NOTE 2020-04
+I no longer have resources to work on this, and there are several issues that need to be addressed.  If you have the desire and skill to contribute to this project, please comment on https://github.com/PhracturedBlue/ESP8266MQTTMesh/issues/75 and I will consider your offer of help
+
 ## Overview
 This code provides a library that can build a mesh network between ESP8266 devices that will allow all nodes to communicate
 with an MQTT broker.  At least one node must be able to see a wiFi router, and there must me a host on the WiFi network running
