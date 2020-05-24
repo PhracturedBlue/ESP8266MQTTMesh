@@ -1153,6 +1153,7 @@ void ESP8266MQTTMesh::onClient(AsyncClient* c) { //when other Node connects to t
         }
     }
     dbgPrintln(EMMDBG_WIFI, "Discarding client connection from: " + c->remoteIP().toString() + " because max Connections are alreaddy established!");
+    c->close(True);
     delete c;
 }
 
