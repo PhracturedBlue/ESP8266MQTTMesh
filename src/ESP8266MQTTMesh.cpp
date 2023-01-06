@@ -22,6 +22,7 @@
 #include "Base64.h"
 
 #include <limits.h>
+#include <string>
 
 #if HAS_OTA
 extern "C" {
