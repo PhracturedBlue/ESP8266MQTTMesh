@@ -33,7 +33,7 @@
 //#include <string>
 
 #ifdef ESP32
-  #define _chipID ((unsigned long)ESP.getEfuseMac())
+  #define _chipID ((uint64_t)ESP.getEfuseMac())
 #else
   #define _chipID ESP.getChipId()
 #endif
@@ -256,6 +256,7 @@ public:
 #ifdef USE_WIFI_ONEVENT
     void WiFiEventHandler(system_event_id_t event, system_event_info_t info);
 #endif
+    void setID(const char *id);
 };
 
 #include "ESP8266MQTTMeshBuilder.h"

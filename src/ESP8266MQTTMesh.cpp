@@ -1252,3 +1252,9 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) { //TODO: c
     }
     dbgPrintln(EMMDBG_WIFI, "Could not find client");
 }
+
+void ESP8266MQTTMesh::setID(const char *id){
+    strncpy (myID, id, sizeof(myID));
+    strlcat(myID, "/", sizeof(myID));
+}
+
