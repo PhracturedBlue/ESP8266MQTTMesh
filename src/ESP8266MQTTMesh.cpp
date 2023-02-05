@@ -635,7 +635,11 @@ void ESP8266MQTTMesh::send_connected_msg() {
     if(wasConnected){
         publish("info/reset_Reason", String("lost_Connection").c_str(), MSG_TYPE_RETAIN_QOS_0);
     }else{
+#ifdef ESP32
+        publish("info/reset_Reason", String(esp_reset_reason()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+#else
         publish("info/reset_Reason", String(ESP.getResetReason()).c_str(), MSG_TYPE_RETAIN_QOS_0);
+#endif
     }
     delay(500);
     publish("info/MAC", String(WiFi.macAddress()).c_str(), MSG_TYPE_RETAIN_QOS_0);
@@ -782,7 +786,11 @@ void ESP8266MQTTMesh::get_fw_string(char *msg, int len, const char *prefix)
     if (strlen(prefix)) {
         strlcat(msg, " ", len);
     }
+#ifdef ESP32
+    sprintf(id, "ChipID:%06X FirmwareID:%04X v%s IP:%s %s", _chipID, firmware_id, firmware_ver, WiFi.localIP().toString().c_str(), meshConnect ? "mesh" : "");
+#else
     os_sprintf(id, "ChipID:%06X FirmwareID:%04X v%s IP:%s %s", _chipID, firmware_id, firmware_ver, WiFi.localIP().toString().c_str(), meshConnect ? "mesh" : "");
+#endif
     strlcat(msg, id, len);
 }
 

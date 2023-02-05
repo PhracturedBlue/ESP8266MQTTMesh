@@ -33,7 +33,7 @@
 //#include <string>
 
 #ifdef ESP32
-  #define _chipID ((uint64_t)ESP.getEfuseMac())
+  #define _chipID ((uint32_t)ESP.getEfuseMac())
 #else
   #define _chipID ESP.getChipId()
 #endif
