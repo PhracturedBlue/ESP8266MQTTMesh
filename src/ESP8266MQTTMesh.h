@@ -17,10 +17,10 @@
 #include <Arduino.h>
 
 #ifdef ESP32
-//  #include <AsyncTCP.h>
-//  #include <ESP32Ticker.h>
-//  #define USE_WIFI_ONEVENT
-//  #include "WiFiCompat.h"
+  #include <AsyncTCP.h>
+  #include <Ticker.h>
+  #define USE_WIFI_ONEVENT
+  #include "WiFiCompat.h"
 #else
   #include <ESP8266WiFi.h>
   #include <ESPAsyncTCP.h>
