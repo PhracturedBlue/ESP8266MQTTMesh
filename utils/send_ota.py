@@ -103,13 +103,16 @@ def send_firmware(client, data, nodes):
         retries = 0
         seen = {}
         while True:
-            seen.update(wait_for(nodes, 'md5', 10.0))
+            seen.update(wait_for(nodes, 'md5', 30.0))
             if len(seen.keys()) == len(nodes):
                 break
+                
             if retries == 0:
                 break
+            
             client.publish(topic, b64d)
             retries -= 1
+            
         for node in nodes:
             if node not in seen:
                 print("No MD5 found for {} at 0x{} (expected {})".format(node, pos, expected_md5))
@@ -117,13 +120,14 @@ def send_firmware(client, data, nodes):
             addr = int(seen[node][2], 16)
             md5 = seen[node][3]
             if pos != addr:
-                print("Got unexpected address 0x{} (expected: 0x{}) from node {}".format(addr, pos, node))
-                return
+                raise RuntimeError("Got unexpected address 0x{} (expected: 0x{}) from node {}".format(addr, pos, node))
+
             if md5 != expected_md5:
                 print("Got unexpected md5 for node {} at 0x{},\n"
                       "maybe the send Packages are to large for your MCU, if this happens every time try using the Argument: --packageLength".format(node, addr))
                 print("\t {} (expected: {})".format(md5, expected_md5))
                 return
+                
         pos += len(d)
         if pos % (int(10000/maxMQTTMessageLength)*maxMQTTMessageLength) == 0: #aproximately every 10kb of send Data
             print("Transmitted %d bytes" % pos)
