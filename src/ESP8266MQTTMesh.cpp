@@ -876,7 +876,7 @@ void ESP8266MQTTMesh::erase_sector() {
     //erase flash area here
     if (nextErase >= start) {
         ESP.flashEraseSector(nextErase--);
-        schedule.once(0.001, erase_sector, this);
+        schedule.once<void (*)(ESP8266MQTTMesh*), ESP8266MQTTMesh*>(0.001, erase_sector, this);
     } else {
         nextErase = 0;
         char deltaStr[10];
@@ -916,7 +916,7 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
         nextErase = end / FLASH_SECTOR_SIZE - 1;
         startTime = micros();
         dbgPrintln(EMMDBG_OTA, "Erasing " + String((end - freeSpaceStart)/ FLASH_SECTOR_SIZE) + " sectors");
-        schedule.once(0.0, erase_sector, this);
+        schedule.once<void (*)(ESP8266MQTTMesh*), ESP8266MQTTMesh*>(0.0, erase_sector, this);
     }
     else if(0 == strcmp(cmd, "check")) {
         if (strlen(msg) > 0) {
@@ -994,7 +994,7 @@ void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
 #else
         espClient[0]->connect(WiFi.gatewayIP(), mesh_port);
 #endif
-        schedule.once(5000, checkConnectionEstablished_static, this);
+        schedule.once<void (*)(ESP8266MQTTMesh*), ESP8266MQTTMesh*> (5000, checkConnectionEstablished_static, this);
         bufptr[0] = inbuffer[0];
     } else {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mqtt");
