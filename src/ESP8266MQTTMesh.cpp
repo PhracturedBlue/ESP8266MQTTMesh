@@ -155,6 +155,8 @@ void ESP8266MQTTMesh::begin() {
     //char macstr[18];
     //sprintf(macstr,"%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     //dbgPrintln(EMMDBG_MSG, "Changing MAC address to: " + String(macstr));
+    do_blink = true;
+    
     WiFi.disconnect();
 
     // This is needed to ensure both wifi_set_macaddr() calls work
@@ -981,6 +983,8 @@ void ESP8266MQTTMesh::handle_ota(const char *cmd, const char *msg) {
 #endif //HAS_OTA
 
 void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
+    do_blink = false and blink_status;
+    
     // when connecting to the Mesh, not the direct Connection
     if (meshConnect) {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mesh: " + WiFi.gatewayIP().toString() + " on port: " + String(mesh_port));
@@ -1007,6 +1011,8 @@ void ESP8266MQTTMesh::checkConnectionEstablished() {
 
 
 void ESP8266MQTTMesh::onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
+    do_blink = true and blink_status;
+    
     //Reasons are here: ESP8266WiFiType.h-> WiFiDisconnectReason
     if (! connectScheduled) {
         schedule_connect(2.0);
@@ -1259,5 +1265,16 @@ void ESP8266MQTTMesh::onData(AsyncClient* c, void* data, size_t len) { //TODO: c
 void ESP8266MQTTMesh::setID(const char *id){
     strncpy (myID, id, sizeof(myID));
     strlcat(myID, "/", sizeof(myID));
+}
+
+void ESP8266MQTTMesh::loop(){
+    unsigned long currentMillis = millis();
+    
+    if (currentMillis - lastBlink >= blinkInterval and do_blink) {
+        lastBlink = currentMillis;
+        
+        int last_val = digitalRead(status_pin);
+        digitalWrite(status_pin, not last_val);
+    }
 }
 

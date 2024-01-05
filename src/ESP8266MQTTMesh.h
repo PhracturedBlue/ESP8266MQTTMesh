@@ -158,6 +158,12 @@ private:
     bool p2pConnected = false; //when connected over Mesh, a peer to peer Connection gets established with the connected Node, variable shows if this Connection is ok.
     bool scanning = 0; //if scanning is in progress
     bool AP_ready = false; //if own Acess point is setup or shutdown
+    
+    bool blink_status = false; // if true the status_pin is blinked to show connection status
+    unsigned long blinkInterval = 500;
+    unsigned long lastBlink = 0;
+    bool do_blink = false; // if true blinking is activated
+    int status_pin = LED_BUILTIN; // pin used to signal connection status
 
     std::function<void(const char *topic, const char *msg)> callback; //TODO: check out this syntax
 
@@ -257,6 +263,9 @@ public:
     void WiFiEventHandler(system_event_id_t event, system_event_info_t info);
 #endif
     void setID(const char *id);
+    
+    void loop(); // function to be run in the main loop
+    void set_blink_status(bool value) {blink_status = value;}
 };
 
 #include "ESP8266MQTTMeshBuilder.h"
