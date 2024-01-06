@@ -93,7 +93,6 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
         outTopic(outTopic),
         espServer(mesh_port)
 {
-
     strlcpy(mesh_password, _mesh_password, 64-strlen(MESH_API_VER));
     strlcat(mesh_password, MESH_API_VER, 64);
     mesh_bssid_key = 0x118d5b; //Seed
@@ -106,6 +105,11 @@ ESP8266MQTTMesh::ESP8266MQTTMesh(const wifi_conn *networks,
     while (tmp.length() < 6)
         tmp = "0" + tmp;
     strlcpy(myID, (tmp + "/").c_str(), sizeof(myID));
+    
+    strlcpy(availableTopic, outTopic, sizeof(availableTopic));
+    strlcat(availableTopic, myID, sizeof(availableTopic));
+    strlcat(availableTopic, "info/available", sizeof(availableTopic));
+    
 #if HAS_OTA
     uint32_t usedSize = ESP.getSketchSize();
     // round one sector up
@@ -217,6 +221,10 @@ void ESP8266MQTTMesh::begin() {
 #endif
     //mqttClient.setCallback([this] (char* topic, byte* payload, unsigned int length) { this->mqtt_callback(topic, payload, length); });
 
+    if (not meshConnect) {
+        mqttClient.setWill(availableTopic, MSG_TYPE_RETAIN_QOS_0, true, "offline");
+        dbgPrintln(EMMDBG_MQTT, ("last will set to topic: " + String(availableTopic)).c_str());
+    }
 
     dbgPrintln(EMMDBG_WIFI_EXTRA, WiFi.status());
     dbgPrintln(EMMDBG_MSG_EXTRA, "Setup Complete");
@@ -649,6 +657,8 @@ void ESP8266MQTTMesh::send_connected_msg() {
     publish("info/IP_local", WiFi.localIP().toString().c_str(), MSG_TYPE_RETAIN_QOS_0);
     publish("info/RSSI", String(ap_ptr->rssi).c_str(), MSG_TYPE_RETAIN_QOS_0);
     publish("info/connectedTo", String(mac_str(ap_ptr->bssid)).c_str(), MSG_TYPE_RETAIN_QOS_0);
+    
+    publish("info/available", "online", MSG_TYPE_RETAIN_QOS_0);
 }
 
 

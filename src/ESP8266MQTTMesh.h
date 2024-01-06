@@ -124,6 +124,8 @@ private:
 
     const char   *inTopic;
     const char   *outTopic;
+    
+    char availableTopic[64];
 #if HAS_OTA
     uint32_t freeSpaceStart;
     uint32_t freeSpaceEnd;
