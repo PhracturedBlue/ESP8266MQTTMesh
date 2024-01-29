@@ -2,12 +2,12 @@
 #define _ESP8266MQTTMESH_H_
 
 #if ! defined(MQTT_MAX_PACKET_SIZE)
-    #define MQTT_MAX_PACKET_SIZE 1152
+    #define MQTT_MAX_PACKET_SIZE (1024+128+1) //1024 is the Payload size, 1 is the String Terminator and 128 should be the max topic Length
 #endif
 #if  ! defined(ESP8266MESHMQTT_DISABLE_OTA) && ! defined(ESP32)
     //By default we support OTA
-    #if ! defined(MQTT_MAX_PACKET_SIZE) || MQTT_MAX_PACKET_SIZE < (1024+128)
-        #error "Must define MQTT_MAX_PACKET_SIZE >= 1152"
+    #if ! defined(MQTT_MAX_PACKET_SIZE) || MQTT_MAX_PACKET_SIZE < (1024+128+1)
+        #error "Must define MQTT_MAX_PACKET_SIZE >= (1024+128+1)"
     #endif
     #define HAS_OTA 1
 #else
@@ -18,7 +18,7 @@
 
 #ifdef ESP32
   #include <AsyncTCP.h>
-  #include <ESP32Ticker.h>
+  #include <Ticker.h>
   #define USE_WIFI_ONEVENT
   #include "WiFiCompat.h"
 #else
@@ -30,9 +30,10 @@
 #include <AsyncMqttClient.h>
 #include <FS.h>
 #include <functional>
+//#include <string>
 
 #ifdef ESP32
-  #define _chipID ((unsigned long)ESP.getEfuseMac())
+  #define _chipID ((uint32_t)ESP.getEfuseMac())
 #else
   #define _chipID ESP.getChipId()
 #endif
@@ -57,7 +58,7 @@
 #define EMMDBG_NONE          0x00000000
 
 #ifndef ESP8266_NUM_CLIENTS
-  #define ESP8266_NUM_CLIENTS 4
+  #define ESP8266_NUM_CLIENTS 4 //4 seems to be them maximal Ammount the esp8266 can handle
 #endif
 
 enum MSG_TYPE {
@@ -71,19 +72,22 @@ enum MSG_TYPE {
     MSG_TYPE_RETAIN_QOS_2 = 15,
 };
 
+#if ASYNC_TCP_SSL_ENABLED
+    typedef struct {
+        const uint8_t *cert;
+        const uint8_t *key;
+        const uint8_t *fingerprint;
+        uint32_t cert_len;
+        uint32_t key_len;
+    } ssl_cert_t;
+#endif
 
-typedef struct {
-    const uint8_t *cert;
-    const uint8_t *key;
-    const uint8_t *fingerprint;
-    uint32_t cert_len;
-    uint32_t key_len;
-} ssl_cert_t;
-
-typedef struct {
-    unsigned int len;
-    byte         md5[16];
-} ota_info_t;
+#if HAS_OTA
+    typedef struct {
+        uint32_t len;
+        byte md5[16];
+    } ota_info_t;
+#endif
 
 typedef struct ap_t {
     struct ap_t *next;
@@ -120,6 +124,8 @@ private:
 
     const char   *inTopic;
     const char   *outTopic;
+    
+    char availableTopic[64];
 #if HAS_OTA
     uint32_t freeSpaceStart;
     uint32_t freeSpaceEnd;
@@ -133,32 +139,38 @@ private:
     const uint8_t *mqtt_fingerprint;
 #endif
     AsyncServer     espServer;
-    AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1] = {0};
+    AsyncClient     *espClient[ESP8266_NUM_CLIENTS+1] = {0}; //TODO: test if this does what I hope it does!
     uint8_t         espMAC[ESP8266_NUM_CLIENTS+1][6];
     AsyncMqttClient mqttClient;
 
     Ticker schedule;
 
+    bool connectScheduled = false;
+    bool alreaddyDisconnected = false;
     int retry_connect;
     ap_t *ap = NULL;
-    ap_t *ap_ptr;
+    ap_t *ap_ptr = NULL;
     ap_t *ap_unused = NULL;
     char myID[10];
-    char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE];
-    char *bufptr[ESP8266_NUM_CLIENTS+1];
-    long lastMsg = 0;
-    char msg[50];
-    int value = 0;
-    bool meshConnect = false;
-    unsigned long lastReconnect = 0;
-    unsigned long lastStatus = 0;
-    bool connecting = 0;
-    bool scanning = 0;
-    bool AP_ready = false;
-    std::function<void(const char *topic, const char *msg)> callback;
+    char inbuffer[ESP8266_NUM_CLIENTS+1][MQTT_MAX_PACKET_SIZE]; //Buffer for storing Fragmented Packages between Calls
+    char *bufptr[ESP8266_NUM_CLIENTS+1]; //Pointer to inbuffer for handling fragmented Packages
+
+    bool meshConnect = false; //If Node is connected over the Mesh or directly to the Router
+    bool wasConnected = false; //is true if Node was connected and lost connection, false if restarted and hasn't had a connection
+    bool p2pConnected = false; //when connected over Mesh, a peer to peer Connection gets established with the connected Node, variable shows if this Connection is ok.
+    bool scanning = 0; //if scanning is in progress
+    bool AP_ready = false; //if own Acess point is setup or shutdown
+    
+    bool blink_status = false; // if true the status_pin is blinked to show connection status
+    unsigned long blinkInterval = 500;
+    unsigned long lastBlink = 0;
+    bool do_blink = false; // if true blinking is activated
+    int status_pin = LED_BUILTIN; // pin used to signal connection status
+
+    std::function<void(const char *topic, const char *msg)> callback; //TODO: check out this syntax
 
     bool wifiConnected() { return (WiFi.status() == WL_CONNECTED); }
-    void die() { while(1) {} }
+    void die() { ESP.restart(); while(1) {} }
 
     uint32_t lfsr(uint32_t seed, uint8_t b);
     uint32_t encrypt_id(uint32_t id);
@@ -168,7 +180,7 @@ private:
     int match_networks(const char *ssid, const char *bssid);
     void scan();
     void connect();
-    static void connect(ESP8266MQTTMesh *e) { e->connect(); };
+    static void connect_static(ESP8266MQTTMesh *e) { e->connect(); };
     String mac_str(uint8_t *bssid);
     const char *build_mesh_ssid(char buf[32], uint8_t *mac);
     void schedule_connect(float delay = 5.0);
@@ -176,6 +188,7 @@ private:
     void shutdown_AP();
     void setup_AP();
     void handle_client_data(int idx, char *data);
+    void HandleMessages(const char *topic, const char *msg);
     void parse_message(const char *topic, const char *msg);
     void mqtt_callback(const char* topic, const byte* payload, unsigned int length);
     uint16_t mqtt_publish(const char *topic, const char *msg, uint8_t msgType);
@@ -191,6 +204,11 @@ private:
     char * md5(const uint8_t *msg, int len);
     bool check_ota_md5();
     void assign_subdomain();
+    static void checkConnectionEstablished(ESP8266MQTTMesh *e);
+
+    void checkConnectionEstablished();
+    static void checkConnectionEstablished_static(ESP8266MQTTMesh *e) { e->checkConnectionEstablished(); };
+
     static void assign_subdomain(ESP8266MQTTMesh *e) { e->assign_subdomain(); };
     void erase_sector();
     static void erase_sector(ESP8266MQTTMesh *e) { e->erase_sector(); };
@@ -237,6 +255,7 @@ private:
                     const char *inTopic, const char *outTopic);
 public:
     void setCallback(std::function<void(const char *topic, const char *msg)> _callback);
+    void setType(uint32_t type);
     void begin();
     void publish(const char *subtopic, const char *msg, enum MSG_TYPE msgCmd = MSG_TYPE_NONE);
     void publish_node(const char *subtopic, const char *msg, enum MSG_TYPE msgCmd = MSG_TYPE_NONE);
@@ -245,6 +264,10 @@ public:
 #ifdef USE_WIFI_ONEVENT
     void WiFiEventHandler(system_event_id_t event, system_event_info_t info);
 #endif
+    void setID(const char *id);
+    
+    void loop(); // function to be run in the main loop
+    void set_blink_status(bool value) {blink_status = value;}
 };
 
 #include "ESP8266MQTTMeshBuilder.h"

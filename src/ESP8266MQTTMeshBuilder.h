@@ -14,9 +14,6 @@ private:
     const char   *mesh_password;
     int          mesh_port;
 
-    const char   *inTopic;
-    const char   *outTopic;
-
     unsigned int firmware_id;
     const char   *firmware_ver;
 #if ASYNC_TCP_SSL_ENABLED
@@ -28,6 +25,9 @@ private:
     void fix_mqtt_port() { if (! mqtt_port) mqtt_port = 1883; };
 #endif
 
+    const char* inTopic;
+    const char* outTopic;
+
 public:
     Builder(const wifi_conn *networks,
             const char   *mqtt_server,
@@ -37,11 +37,11 @@ public:
        mqtt_port(mqtt_port),
        mqtt_username(NULL),
        mqtt_password(NULL),
-       firmware_id(0),
-       firmware_ver(NULL),
        mesh_ssid("esp8266_mqtt_mesh"),
        mesh_password("ESP8266MQTTMesh"),
        mesh_port(1884),
+       firmware_id(0),
+       firmware_ver(NULL),
 #if ASYNC_TCP_SSL_ENABLED
        mqtt_secure(false),
        mqtt_fingerprint(NULL),
