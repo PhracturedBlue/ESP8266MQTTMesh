@@ -1048,7 +1048,7 @@ void ESP8266MQTTMesh::onWifiConnect(const WiFiEventStationModeGotIP& event) {
 #else
         espClient[0]->connect(WiFi.gatewayIP(), mesh_port);
 #endif
-        schedule.once<void (*)(ESP8266MQTTMesh*), ESP8266MQTTMesh*> (5000, checkConnectionEstablished_static, this);
+        schedule.once<ESP8266MQTTMesh*> (5000, checkConnectionEstablished_static, this);
         bufptr[0] = inbuffer[0];
     } else {
         dbgPrintln(EMMDBG_WIFI, "Connecting to mqtt");
