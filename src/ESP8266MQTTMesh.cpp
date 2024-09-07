@@ -237,11 +237,55 @@ void ESP8266MQTTMesh::begin() {
 
 static ESP8266MQTTMesh *meshPtr;
 
+#ifdef ESP32 
+void staticWiFiEventHandler(arduino_event_t* event_struct)
+{
+    meshPtr->WiFiEventHandler(event_struct->event_id, event_struct->event_info);
+}
+
+#else
 void staticWiFiEventHandler(system_event_id_t event, system_event_info_t info)
 {
     meshPtr->WiFiEventHandler(event, info);
 }
+#endif
 
+#ifdef ESP32
+void ESP8266MQTTMesh::WiFiEventHandler(arduino_event_id_t event, arduino_event_info_t info)
+{
+    switch(event) {
+    case SYSTEM_EVENT_STA_GOT_IP:
+    {
+        struct WiFiEventStationModeGotIP e;
+        e.ip = info.got_ip.ip_info.ip.addr;
+        e.mask = info.got_ip.ip_info.netmask.addr;
+        e.gw = info.got_ip.ip_info.gw.addr;
+        this->onWifiConnect(e);
+        break;
+    }
+    case SYSTEM_EVENT_STA_DISCONNECTED:
+    {
+        struct WiFiEventStationModeDisconnected e;
+        e.ssid.reserve(info.wifi_sta_disconnected.ssid_len+1);
+        for(int i = 0; i < info.wifi_sta_disconnected.ssid_len; i++) {
+            e.ssid += (char)info.wifi_sta_disconnected.ssid[i];
+        }
+        memcpy(e.bssid, info.wifi_sta_disconnected.bssid, 6);
+        e.reason = info.wifi_sta_disconnected.reason;
+        this->onWifiDisconnect(e);
+        break;
+    }
+    case SYSTEM_EVENT_AP_STACONNECTED:
+    {
+        this->onAPConnect(info.wifi_ap_staconnected);
+        break;
+    }
+    case SYSTEM_EVENT_AP_STADISCONNECTED:
+        this->onAPDisconnect(info.wifi_ap_stadisconnected);
+        break;
+    }
+}
+#else
 void ESP8266MQTTMesh::WiFiEventHandler(system_event_id_t event, system_event_info_t info)
 {
     switch(event) {
@@ -276,6 +320,7 @@ void ESP8266MQTTMesh::WiFiEventHandler(system_event_id_t event, system_event_inf
         break;
     }
 }
+#endif
 
 void ESP8266MQTTMesh::connectWiFiEvents()
 {

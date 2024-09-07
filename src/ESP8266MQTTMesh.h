@@ -262,7 +262,11 @@ public:
     bool connected();
     static bool keyValue(const char *data, char separator, char *key, int keylen, const char **value);
 #ifdef USE_WIFI_ONEVENT
+#ifdef ESP32
+    void WiFiEventHandler(arduino_event_id_t event, arduino_event_info_t info);
+#else
     void WiFiEventHandler(system_event_id_t event, system_event_info_t info);
+#endif
 #endif
     void setID(const char *id);
     
