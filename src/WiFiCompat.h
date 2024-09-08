@@ -41,7 +41,7 @@ struct WiFiEventSoftAPModeStationConnected
     uint8_t aid;
 };
 */
-#define WiFiEventSoftAPModeStationConnected system_event_ap_staconnected_t
+#define WiFiEventSoftAPModeStationConnected wifi_event_ap_staconnected_t
 /*
 struct WiFiEventSoftAPModeStationDisconnected
 {
@@ -49,7 +49,7 @@ struct WiFiEventSoftAPModeStationDisconnected
     uint8_t aid;
 };
 */
-#define WiFiEventSoftAPModeStationDisconnected system_event_ap_stadisconnected_t
+#define WiFiEventSoftAPModeStationDisconnected wifi_event_ap_stadisconnected_t
 
 #endif //_WIFI_COMPAT_
 
