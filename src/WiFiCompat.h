@@ -3,6 +3,7 @@
 #define _WIFI_COMPAT_
 
 #include <WiFi.h>
+#include "esp_mac.h"
 
 typedef enum {
     STATION_IF = 0, /**< ESP32 station interface */
