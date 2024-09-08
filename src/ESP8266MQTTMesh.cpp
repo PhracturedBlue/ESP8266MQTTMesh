@@ -254,7 +254,7 @@ void staticWiFiEventHandler(system_event_id_t event, system_event_info_t info)
 void ESP8266MQTTMesh::WiFiEventHandler(arduino_event_id_t event, arduino_event_info_t info)
 {
     switch(event) {
-    case SYSTEM_EVENT_STA_GOT_IP:
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
     {
         struct WiFiEventStationModeGotIP e;
         e.ip = info.got_ip.ip_info.ip.addr;
@@ -263,7 +263,7 @@ void ESP8266MQTTMesh::WiFiEventHandler(arduino_event_id_t event, arduino_event_i
         this->onWifiConnect(e);
         break;
     }
-    case SYSTEM_EVENT_STA_DISCONNECTED:
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
     {
         struct WiFiEventStationModeDisconnected e;
         e.ssid.reserve(info.wifi_sta_disconnected.ssid_len+1);
@@ -275,12 +275,12 @@ void ESP8266MQTTMesh::WiFiEventHandler(arduino_event_id_t event, arduino_event_i
         this->onWifiDisconnect(e);
         break;
     }
-    case SYSTEM_EVENT_AP_STACONNECTED:
+    case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
     {
         this->onAPConnect(info.wifi_ap_staconnected);
         break;
     }
-    case SYSTEM_EVENT_AP_STADISCONNECTED:
+    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
         this->onAPDisconnect(info.wifi_ap_stadisconnected);
         break;
     }
