@@ -272,6 +272,7 @@ public:
     
     void loop(); // function to be run in the main loop
     void set_blink_status(bool value) {blink_status = value;}
+    void set_status_pin(int value) {status_pin = value;}
 };
 
 #include "ESP8266MQTTMeshBuilder.h"
